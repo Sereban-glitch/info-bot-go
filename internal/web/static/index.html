@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Прозоро</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#58a6ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Прозоро">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/icon.svg">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+/* ============================================
+   CSS VARIABLES & THEME (DARK DEFAULT)
+   ============================================ */
+:root {
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-pill: 100px;
+  --spacing: 16px;
+  --spacing-sm: 10px;
+  --spacing-xs: 6px;
+  --tab-height: 60px;
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  /* Dark theme defaults — overridden by Telegram theme params if available */
+  --tg-bg: #0d1117;
+  --tg-text: #e6edf3;
+  --tg-hint: #7d8590;
+  --tg-subtitle: #7d8590;
+  --tg-card: #161b22;
+  --tg-border: rgba(255,255,255,0.06);
+  --tg-button: #58a6ff;
+  --tg-button-text: #ffffff;
+  --tg-secondary-bg: #161b22;
+  --tg-destructive: #f85149;
+  --tg-link: #58a6ff;
+
+  /* Status colors — dark-optimized */
+  --c-green: #3fb950;
+  --c-yellow: #d29922;
+  --c-orange: #db6d28;
+  --c-red: #f85149;
+  --c-gray: #7d8590;
+  --c-brown: #b08060;
+  --c-purple: #7c3aed;
+
+  /* Shadows — dark-appropriate */
+  --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.2);
+
+  /* Glow accents */
+  --glow-primary: 0 0 20px rgba(88,166,255,0.15);
+  --glow-primary-strong: 0 0 30px rgba(88,166,255,0.25), 0 0 60px rgba(88,166,255,0.1);
+  --glow-green: 0 0 12px rgba(63,185,80,0.3);
+  --glow-yellow: 0 0 12px rgba(210,153,34,0.3);
+  --glow-red: 0 0 12px rgba(248,81,73,0.3);
+  --glow-orange: 0 0 12px rgba(219,109,40,0.3);
+  --glow-purple: 0 0 12px rgba(124,58,237,0.3);
+
+  /* Smooth transitions */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ============================================
+   RESET & BASE
+   ============================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+body {
+  font-family: var(--font);
+  background: var(--tg-bg);
+  color: var(--tg-text);
+  line-height: 1.45;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  padding-bottom: calc(var(--tab-height) + 20px + env(safe-area-inset-bottom, 0px));
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ============================================
+   TYPOGRAPHY
+   ============================================ */
+h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+h2 { font-size: 22px; font-weight: 600; letter-spacing: -0.3px; }
+h3 { font-size: 17px; font-weight: 600; }
+p { font-size: 15px; color: var(--tg-hint); }
+small { font-size: 13px; color: var(--tg-hint); }
+
+/* ============================================
+   TAB PAGES
+   ============================================ */
+.tab-page { display: none; padding: var(--spacing); animation: fadeIn 0.3s var(--ease-out); }
+.tab-page.active { display: block; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================
+   CARDS
+   ============================================ */
+.card {
+  background: var(--tg-card);
+  border-radius: var(--radius);
+  padding: var(--spacing);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--tg-border);
+  margin-bottom: var(--spacing-sm);
+  transition: transform 0.2s var(--ease-out), box-shadow 0.2s ease, border-color 0.25s ease;
+}
+.card:active {
+  transform: scale(0.985);
+  border-color: rgba(88,166,255,0.15);
+  box-shadow: var(--shadow), 0 0 20px rgba(88,166,255,0.06);
+}
+
+/* ============================================
+   TAB BAR (BOTTOM) — Glassmorphism Dark
+   ============================================ */
+.tab-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  height: var(--tab-height);
+  background: rgba(13,17,23,0.78);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-top: 0.5px solid var(--tg-border);
+  display: flex; align-items: stretch; z-index: 1000;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.tab-bar-item {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px;
+  font-size: 10px; font-weight: 500; color: var(--tg-hint);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: color 0.25s ease, text-shadow 0.25s ease; border: none; background: none; padding: 0;
+  font-family: var(--font);
+  position: relative;
+}
+.tab-bar-item.active {
+  color: var(--tg-button);
+  text-shadow: 0 0 16px rgba(88,166,255,0.4);
+}
+.tab-bar-item.active .tab-icon {
+  filter: drop-shadow(0 0 6px rgba(88,166,255,0.4));
+}
+.tab-bar-item .tab-icon { font-size: 22px; line-height: 1; transition: filter 0.25s ease; }
+.tab-bar-item .tab-label { font-size: 10px; letter-spacing: 0.1px; }
+
+/* ============================================
+   OVERVIEW TAB
+   ============================================ */
+.greeting { margin-bottom: var(--spacing); }
+.greeting h1 { margin-bottom: 4px; }
+.greeting p { font-size: 15px; }
+
+.stats-row {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm); margin-bottom: var(--spacing);
+}
+.stat-card {
+  background: var(--tg-card); border-radius: var(--radius);
+  padding: 14px var(--spacing); box-shadow: var(--shadow);
+  border: 1px solid var(--tg-border);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.stat-card:active {
+  border-color: rgba(88,166,255,0.15);
+}
+.stat-card .stat-number {
+  font-size: 28px; font-weight: 700; line-height: 1.1;
+  transition: text-shadow 0.3s ease;
+}
+.stat-card .stat-number[style*="var(--tg-button)"],
+.stat-card .stat-number[style*="--tg-button"] {
+  text-shadow: 0 0 18px rgba(88,166,255,0.3);
+}
+.stat-card .stat-label { font-size: 13px; color: var(--tg-hint); margin-top: 2px; }
+
+/* Stat number glow by color */
+.stat-number[style*="--c-green"] { text-shadow: 0 0 16px rgba(63,185,80,0.35); }
+.stat-number[style*="--c-yellow"] { text-shadow: 0 0 16px rgba(210,153,34,0.35); }
+.stat-number[style*="--c-red"] { text-shadow: 0 0 16px rgba(248,81,73,0.35); }
+.stat-number[style*="--tg-button"] { text-shadow: 0 0 16px rgba(88,166,255,0.35); }
+
+.donut-section {
+  display: flex; align-items: center; gap: var(--spacing);
+  margin-bottom: var(--spacing);
+}
+.donut-chart {
+  position: relative; width: 100px; height: 100px;
+  border-radius: 50%; flex-shrink: 0;
+  filter: drop-shadow(0 0 8px rgba(0,0,0,0.3));
+}
+.donut-hole {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 56px; height: 56px;
+  background: var(--tg-card); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 700; z-index: 1;
+}
+.donut-legend { flex: 1; }
+.donut-legend-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; padding: 3px 0; color: var(--tg-text);
+}
+.donut-legend-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+
+.deadline-card { border-left: 4px solid var(--c-orange); }
+.deadline-card .deadline-label { font-size: 13px; color: var(--tg-hint); margin-bottom: 4px; }
+.deadline-card .deadline-countdown {
+  font-size: 24px; font-weight: 700; color: var(--c-orange);
+  text-shadow: 0 0 14px rgba(219,109,40,0.35);
+}
+.deadline-card .deadline-organ { font-size: 14px; margin-top: 4px; }
+
+.last-response-card { border-left: 4px solid var(--c-green); }
+.last-response-card .response-label { font-size: 13px; color: var(--tg-hint); margin-bottom: 6px; }
+.last-response-card .response-subject { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+.last-response-card .response-date { font-size: 13px; color: var(--tg-hint); }
+
+/* Quick actions */
+.quick-actions {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm);
+  margin-top: var(--spacing);
+}
+.quick-action-btn {
+  background: var(--tg-card); border-radius: var(--radius);
+  padding: 14px; box-shadow: var(--shadow);
+  border: 1px solid var(--tg-border);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  text-align: center; transition: all 0.2s var(--ease-out);
+}
+.quick-action-btn:active {
+  transform: scale(0.97);
+  border-color: rgba(88,166,255,0.15);
+  box-shadow: var(--shadow), 0 0 16px rgba(88,166,255,0.08);
+}
+.quick-action-icon { font-size: 24px; margin-bottom: 4px; }
+.quick-action-text { font-size: 13px; font-weight: 500; }
+
+/* ============================================
+   REQUESTS TAB
+   ============================================ */
+.filter-row {
+  display: flex; gap: 8px; margin-bottom: var(--spacing);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; padding-bottom: 4px;
+}
+.filter-row::-webkit-scrollbar { display: none; }
+.filter-btn {
+  flex-shrink: 0; padding: 8px 16px;
+  border-radius: var(--radius-pill); border: 1.5px solid var(--tg-border);
+  background: transparent; color: var(--tg-text);
+  font-size: 14px; font-weight: 500; font-family: var(--font);
+  cursor: pointer; transition: all 0.25s var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+.filter-btn.active {
+  background: var(--tg-button); color: var(--tg-button-text);
+  border-color: var(--tg-button);
+  box-shadow: 0 0 16px rgba(88,166,255,0.25);
+}
+
+.request-list {
+  display: flex; flex-direction: column; gap: var(--spacing-sm);
+}
+.request-card {
+  background: var(--tg-card); border-radius: var(--radius);
+  padding: var(--spacing); box-shadow: var(--shadow);
+  border: 1px solid var(--tg-border);
+  border-left: 5px solid var(--c-yellow);
+  cursor: pointer; transition: all 0.2s var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+}
+.request-card:active {
+  transform: scale(0.985);
+  border-color: rgba(88,166,255,0.12);
+  border-left-color: inherit;
+  box-shadow: var(--shadow), 0 0 16px rgba(88,166,255,0.06);
+}
+.request-card.status-replied { border-left-color: var(--c-green); }
+.request-card.status-pending { border-left-color: var(--c-yellow); }
+.request-card.status-lastday { border-left-color: var(--c-orange); }
+.request-card.status-overdue { border-left-color: var(--c-red); }
+.request-card.status-bounced { border-left-color: var(--c-brown); }
+
+.request-card-header {
+  display: flex; justify-content: space-between;
+  align-items: flex-start; gap: 8px;
+}
+.request-organ {
+  font-size: 15px; font-weight: 600; flex: 1;
+  min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.request-days {
+  font-size: 12px; font-weight: 600; flex-shrink: 0;
+  padding: 3px 8px; border-radius: var(--radius-pill);
+  background: rgba(255,255,255,0.05);
+}
+.request-days.urgent { background: rgba(248,81,73,0.15); color: var(--c-red); text-shadow: 0 0 8px rgba(248,81,73,0.25); }
+.request-days.warning { background: rgba(219,109,40,0.15); color: var(--c-orange); text-shadow: 0 0 8px rgba(219,109,40,0.25); }
+.request-days.ok { background: rgba(63,185,80,0.15); color: var(--c-green); text-shadow: 0 0 8px rgba(63,185,80,0.25); }
+
+.request-subject {
+  font-size: 14px; color: var(--tg-hint); margin-top: 4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.request-meta {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px;
+}
+.request-date { font-size: 12px; color: var(--tg-hint); }
+.request-status-badge {
+  font-size: 11px; font-weight: 600; padding: 2px 10px;
+  border-radius: var(--radius-pill); color: #fff;
+}
+.badge-replied { background: var(--c-green); box-shadow: 0 0 10px rgba(63,185,80,0.25); }
+.badge-pending { background: var(--c-yellow); color: #0d1117; box-shadow: 0 0 10px rgba(210,153,34,0.25); }
+.badge-lastday { background: var(--c-orange); box-shadow: 0 0 10px rgba(219,109,40,0.25); }
+.badge-overdue { background: var(--c-red); box-shadow: 0 0 10px rgba(248,81,73,0.25); }
+.badge-bounced { background: var(--c-brown); box-shadow: 0 0 10px rgba(176,128,96,0.25); }
+
+.empty-state {
+  text-align: center; padding: 48px 24px; color: var(--tg-hint);
+}
+.empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
+.empty-state p { font-size: 15px; color: var(--tg-hint); }
+
+/* ============================================
+   LIBRARY / GENERATOR TAB
+   ============================================ */
+.generator-hero {
+  text-align: center; padding: 12px 0 var(--spacing);
+}
+.generator-hero h2 { font-size: 24px; margin-bottom: 4px; }
+.generator-hero p { font-size: 14px; }
+
+.gen-textarea {
+  width: 100%; min-height: 100px;
+  border-radius: var(--radius); border: 1.5px solid var(--tg-border);
+  background: var(--tg-card); color: var(--tg-text);
+  padding: 14px var(--spacing); font-size: 16px;
+  font-family: var(--font); line-height: 1.5;
+  resize: vertical; outline: none;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.3s ease;
+  -webkit-appearance: none;
+}
+.gen-textarea:focus {
+  border-color: var(--tg-button);
+  box-shadow: 0 0 0 3px rgba(88,166,255,0.15), var(--glow-primary);
+}
+.gen-textarea::placeholder { color: var(--tg-hint); }
+
+.gen-btn {
+  width: 100%; height: 52px;
+  border-radius: var(--radius); border: none;
+  background: linear-gradient(135deg, #58a6ff, #7c3aed);
+  color: var(--tg-button-text);
+  font-size: 17px; font-weight: 600; font-family: var(--font);
+  cursor: pointer; margin-top: var(--spacing);
+  transition: all 0.25s var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+  position: relative; overflow: hidden;
+  box-shadow: 0 0 20px rgba(88,166,255,0.2), 0 0 40px rgba(124,58,237,0.1);
+}
+.gen-btn:active {
+  transform: scale(0.98);
+  box-shadow: 0 0 30px rgba(88,166,255,0.3), 0 0 60px rgba(124,58,237,0.15);
+  filter: brightness(0.92);
+}
+.gen-btn:disabled {
+  opacity: 0.5; cursor: not-allowed; transform: none;
+  box-shadow: none;
+}
+.gen-btn .spinner {
+  display: none; width: 22px; height: 22px;
+  border: 2.5px solid rgba(255,255,255,0.3);
+  border-top-color: #fff; border-radius: 50%;
+  animation: spin 0.7s linear infinite; margin: 0 auto;
+}
+.gen-btn.loading .btn-text { display: none; }
+.gen-btn.loading .spinner { display: block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Generator button shimmer overlay */
+.gen-btn::before {
+  content: '';
+  position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  transition: left 0.5s ease;
+}
+.gen-btn:hover::before {
+  left: 100%;
+}
+
+/* Result card */
+.gen-result {
+  margin-top: var(--spacing); display: none;
+  animation: slideUp 0.4s var(--ease-out);
+}
+.gen-result.visible { display: block; }
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.gen-result-card {
+  background: var(--tg-card); border-radius: var(--radius);
+  padding: var(--spacing); box-shadow: var(--shadow-lg);
+  border: 1px solid var(--tg-border);
+}
+.gen-result-card .result-header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+}
+.gen-result-card .result-ai-badge {
+  font-size: 11px; font-weight: 600; padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, #58a6ff, #7c3aed); color: #fff;
+  animation: aiPulse 2.5s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(88,166,255,0.2);
+}
+@keyframes aiPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(88,166,255,0.15); }
+  50% { box-shadow: 0 0 18px rgba(88,166,255,0.35), 0 0 30px rgba(124,58,237,0.15); }
+}
+.gen-result-card .result-body {
+  font-size: 14px; line-height: 1.6; white-space: pre-wrap;
+  color: var(--tg-text); max-height: 300px; overflow-y: auto;
+  padding: 12px; background: rgba(0,0,0,0.2);
+  border-radius: var(--radius-sm); margin-bottom: var(--spacing-sm);
+  border: 1px solid var(--tg-border);
+}
+.gen-result-card .result-actions { display: flex; gap: 8px; }
+
+/* Law references in result */
+.gen-law-refs { margin-top: 12px; }
+.gen-law-title { font-size: 13px; font-weight: 600; color: var(--tg-button); margin-bottom: 8px; }
+.gen-law-item {
+  font-size: 13px; color: var(--tg-hint); margin-bottom: 6px;
+  padding-left: 12px; border-left: 2px solid rgba(88,166,255,0.3);
+}
+.gen-law-article { color: var(--tg-text); font-weight: 500; }
+
+.gen-recipient-hint {
+  font-size: 13px; color: var(--tg-hint); margin-top: 10px;
+  padding: 8px 12px; background: rgba(0,0,0,0.2); border-radius: var(--radius-sm);
+  border: 1px solid var(--tg-border);
+}
+
+.result-action-btn {
+  flex: 1; height: 44px; border-radius: var(--radius-sm);
+  border: none; font-size: 14px; font-weight: 600;
+  font-family: var(--font); cursor: pointer;
+  transition: all 0.2s var(--ease-out); -webkit-tap-highlight-color: transparent;
+}
+.result-action-btn:active { transform: scale(0.97); }
+.result-action-btn.primary {
+  background: var(--tg-button); color: var(--tg-button-text);
+  box-shadow: 0 0 14px rgba(88,166,255,0.2);
+}
+.result-action-btn.primary:active {
+  box-shadow: 0 0 22px rgba(88,166,255,0.3);
+}
+.result-action-btn.secondary {
+  background: var(--tg-secondary-bg); color: var(--tg-text);
+  border: 1px solid var(--tg-border);
+}
+
+/* Quick templates */
+.quick-templates { margin-top: var(--spacing); }
+.quick-templates h3 { font-size: 15px; color: var(--tg-hint); margin-bottom: var(--spacing-sm); }
+.quick-template-list {
+  display: flex; flex-direction: column; gap: var(--spacing-xs);
+}
+.quick-template-item {
+  background: var(--tg-card); border-radius: var(--radius-sm);
+  padding: 14px var(--spacing); border: 1px solid var(--tg-border);
+  cursor: pointer; transition: all 0.2s var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+  display: flex; align-items: center; gap: 12px;
+}
+.quick-template-item:active {
+  transform: scale(0.98);
+  border-color: rgba(88,166,255,0.15);
+  box-shadow: 0 0 12px rgba(88,166,255,0.06);
+}
+.quick-template-item .qt-icon { font-size: 24px; width: 40px; text-align: center; flex-shrink: 0; }
+.quick-template-item .qt-title { font-size: 15px; font-weight: 600; }
+.quick-template-item .qt-desc { font-size: 13px; color: var(--tg-hint); }
+
+/* Law reference cards */
+.law-section { margin-top: var(--spacing); }
+.law-section h3 { font-size: 15px; color: var(--tg-hint); margin-bottom: var(--spacing-sm); }
+.law-card {
+  background: var(--tg-card); border-radius: var(--radius-sm);
+  padding: 12px 14px; margin-bottom: 8px;
+  border: 1px solid var(--tg-border);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.law-card:active {
+  border-color: rgba(88,166,255,0.12);
+}
+.law-card-title { font-size: 13px; font-weight: 600; color: var(--tg-button); }
+.law-card-text { font-size: 12px; color: var(--tg-hint); margin-top: 4px; line-height: 1.5; }
+
+/* ============================================
+   PROFILE TAB
+   ============================================ */
+.profile-header { text-align: center; padding: 20px 0; }
+.profile-avatar {
+  width: 80px; height: 80px; border-radius: 50%;
+  background: linear-gradient(135deg, #58a6ff, #7c3aed);
+  color: var(--tg-button-text);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px; font-weight: 700; margin: 0 auto 12px;
+  box-shadow: 0 0 24px rgba(88,166,255,0.2), 0 0 48px rgba(124,58,237,0.1);
+}
+.profile-name { font-size: 20px; font-weight: 600; }
+
+.profile-fields { margin-top: var(--spacing); }
+.profile-field { padding: var(--spacing); border-bottom: 1px solid var(--tg-border); transition: background-color 0.2s ease; }
+.profile-field:last-child { border-bottom: none; }
+.profile-field:active {
+  background: rgba(88,166,255,0.04);
+}
+.profile-field-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--tg-hint); margin-bottom: 4px;
+}
+.profile-field-value { font-size: 16px; color: var(--tg-text); }
+
+.profile-edit-link {
+  display: block; text-align: center; padding: var(--spacing);
+  color: var(--tg-link); font-size: 15px; font-weight: 500;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  margin-top: var(--spacing-sm);
+  transition: text-shadow 0.25s ease;
+}
+.profile-edit-link:active {
+  text-shadow: 0 0 12px rgba(88,166,255,0.3);
+}
+
+.profile-version {
+  text-align: center; margin-top: 32px;
+  font-size: 12px; color: var(--tg-hint);
+}
+
+/* ============================================
+   TOAST
+   ============================================ */
+.toast {
+  position: fixed; top: 20px; left: 50%;
+  transform: translateX(-50%) translateY(-80px);
+  background: #30363d; color: #e6edf3;
+  padding: 12px 24px; border-radius: var(--radius-pill);
+  font-size: 14px; font-weight: 500; z-index: 9999;
+  opacity: 0; transition: all 0.35s var(--ease-out);
+  pointer-events: none; white-space: nowrap;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ============================================
+   SKELETON LOADER (Dark shimmer)
+   ============================================ */
+.skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.skeleton-card { height: 80px; margin-bottom: var(--spacing-sm); border-radius: var(--radius); }
+
+/* ============================================
+   SCROLLBAR (Dark)
+   ============================================ */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+
+/* ============================================
+   SELECTION
+   ============================================ */
+::selection {
+  background: rgba(88,166,255,0.3);
+  color: #e6edf3;
+}
+</style>
+</head>
+<body>
+
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
+<!-- ===================== TAB 1: ОГЛЯД ===================== -->
+<div class="tab-page active" id="tab-overview">
+  <div class="greeting">
+    <h1 id="greeting-text">Добрий день! 👋</h1>
+    <p>Ось ваші запити на сьогодні</p>
+  </div>
+
+  <div class="stats-row" id="stats-row">
+    <div class="stat-card">
+      <div class="stat-number" style="color:var(--tg-button)" id="stat-total">—</div>
+      <div class="stat-label">Всього</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" style="color:var(--c-green)" id="stat-replied">—</div>
+      <div class="stat-label">Відповідей</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" style="color:var(--c-yellow)" id="stat-pending">—</div>
+      <div class="stat-label">Очікують</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" style="color:var(--c-red)" id="stat-overdue">—</div>
+      <div class="stat-label">Прострочено</div>
+    </div>
+  </div>
+
+  <div class="card donut-section" id="donut-section" style="display:none;">
+    <div class="donut-chart" id="donut-chart">
+      <div class="donut-hole" id="donut-total">0</div>
+    </div>
+    <div class="donut-legend" id="donut-legend">
+      <div class="donut-legend-item"><span class="donut-legend-dot" style="background:var(--c-green)"></span> Відповіді</div>
+      <div class="donut-legend-item"><span class="donut-legend-dot" style="background:var(--c-yellow)"></span> Очікують</div>
+      <div class="donut-legend-item"><span class="donut-legend-dot" style="background:var(--c-red)"></span> Прострочено</div>
+    </div>
+  </div>
+
+  <div class="card deadline-card" id="deadline-card" style="display:none;">
+    <div class="deadline-label">⏰ Найближчий дедлайн</div>
+    <div class="deadline-countdown" id="deadline-countdown">—</div>
+    <div class="deadline-organ" id="deadline-organ"></div>
+  </div>
+
+  <div class="card last-response-card" id="last-response-card" style="display:none;">
+    <div class="response-label">📬 Остання відповідь</div>
+    <div class="response-subject" id="last-response-subject">—</div>
+    <div class="response-date" id="last-response-date"></div>
+  </div>
+
+  <div class="quick-actions">
+    <div class="quick-action-btn" onclick="switchTab('library')">
+      <div class="quick-action-icon">✨</div>
+      <div class="quick-action-text">AI генератор</div>
+    </div>
+    <div class="quick-action-btn" onclick="switchTab('requests')">
+      <div class="quick-action-icon">📋</div>
+      <div class="quick-action-text">Мої запити</div>
+    </div>
+    <div class="quick-action-btn" onclick="sendBotCommand('/new')">
+      <div class="quick-action-icon">📝</div>
+      <div class="quick-action-text">Новий запит</div>
+    </div>
+    <div class="quick-action-btn" onclick="sendBotCommand('/profile')">
+      <div class="quick-action-icon">👤</div>
+      <div class="quick-action-text">Профіль</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== TAB 2: ЗАПИТИ ===================== -->
+<div class="tab-page" id="tab-requests">
+  <h2 style="margin-bottom:16px;">Запити</h2>
+
+  <div class="filter-row">
+    <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">Усі</button>
+    <button class="filter-btn" data-filter="pending" onclick="setFilter('pending')">Очікують</button>
+    <button class="filter-btn" data-filter="replied" onclick="setFilter('replied')">Відповіді</button>
+    <button class="filter-btn" data-filter="overdue" onclick="setFilter('overdue')">Прострочені</button>
+  </div>
+
+  <div class="request-list" id="request-list">
+    <div class="empty-state" id="requests-empty">
+      <div class="empty-icon">📭</div>
+      <p>Запити відсутні</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== TAB 3: БІБЛІОТЕКА ===================== -->
+<div class="tab-page" id="tab-library">
+  <div class="generator-hero">
+    <h2>✨ Генератор запитів</h2>
+    <p>Опишіть, що хочете дізнатися — AI складе юридичний запит з посиланнями на ЗУ</p>
+  </div>
+
+  <label style="display:block;font-size:13px;font-weight:600;color:var(--tg-hint);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Що вас цікавить?</label>
+  <textarea
+    class="gen-textarea"
+    id="gen-description"
+    placeholder="Наприклад: стан укриттів у школі №5, витрати на ремонти, зарплати посадовців..."
+    maxlength="1000"
+  ></textarea>
+
+  <button class="gen-btn" id="gen-btn" onclick="generateRequest()">
+    <span class="btn-text">✨ Згенерувати запит</span>
+    <div class="spinner"></div>
+  </button>
+
+  <div class="gen-result" id="gen-result">
+    <div class="gen-result-card">
+      <div class="result-header">
+        <span style="font-weight:600;">Згенерований запит</span>
+        <span class="result-ai-badge">AI</span>
+      </div>
+      <div class="result-body" id="gen-result-body"></div>
+
+      <div class="gen-law-refs" id="gen-law-refs" style="display:none;">
+        <div class="gen-law-title">📖 Посилання на Закон:</div>
+        <div id="gen-law-items"></div>
+      </div>
+
+      <div class="gen-recipient-hint" id="gen-recipient-hint" style="display:none;"></div>
+
+      <div class="result-actions" style="margin-top:12px;">
+        <button class="result-action-btn primary" onclick="copyResult()">📋 Скопіювати</button>
+        <button class="result-action-btn secondary" onclick="useInBot()">✏️ Відправити в боті</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="quick-templates">
+    <h3>Готові шаблони</h3>
+    <div class="quick-template-list" id="templates-list">
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+      <div class="skeleton skeleton-card"></div>
+    </div>
+  </div>
+
+  <div class="law-section">
+    <h3>📜 Законодавство</h3>
+    <div class="law-card">
+      <div class="law-card-title">Закон України № 2939-VI</div>
+      <div class="law-card-text">«Про доступ до публічної інформації» — головний закон, що гарантує право кожного на доступ до публічної інформації.</div>
+    </div>
+    <div class="law-card">
+      <div class="law-card-title">⏱ Ст. 17 — Строк відповіді</div>
+      <div class="law-card-text">Відповідь на запит надається не пізніше 5 робочих днів. Якщо запит стосується життєво важливих потреб — 20 робочих днів.</div>
+    </div>
+    <div class="law-card">
+      <div class="law-card-title">⚖️ Ст. 22 — Відповідальність</div>
+      <div class="law-card-text">Посадові особи несуть дисциплінарну, адміністративну та кримінальну відповідальність за порушення законодавства.</div>
+    </div>
+    <div class="law-card">
+      <div class="law-card-title">🔄 Ст. 28 — Оскарження</div>
+      <div class="law-card-text">Рішення, дії чи бездіяльність розпорядників можна оскаржити до керівника вищого рівня, Уповноваженого ВР або до суду.</div>
+    </div>
+    <div class="law-card">
+      <div class="law-card-title">📋 Ст. 13 — Вимоги до запиту</div>
+      <div class="law-card-text">Запит може бути поданий у будь-якій формі: усно, письмово, електронною поштою. Від вас потрібні лише ім'я та спосіб отримання відповіді.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== TAB 4: ПРОФІЛЬ ===================== -->
+<div class="tab-page" id="tab-profile">
+  <div class="profile-header">
+    <div class="profile-avatar" id="profile-avatar">?</div>
+    <div class="profile-name" id="profile-name">Завантаження...</div>
+  </div>
+
+  <div class="card">
+    <div class="profile-fields">
+      <div class="profile-field">
+        <div class="profile-field-label">ПІБ</div>
+        <div class="profile-field-value" id="profile-fullname">—</div>
+      </div>
+      <div class="profile-field">
+        <div class="profile-field-label">Email</div>
+        <div class="profile-field-value" id="profile-email">—</div>
+      </div>
+      <div class="profile-field">
+        <div class="profile-field-label">Поштова адреса</div>
+        <div class="profile-field-value" id="profile-postal">—</div>
+      </div>
+    </div>
+  </div>
+
+  <a class="profile-edit-link" onclick="sendBotCommand('/profile')">✏️ Редагувати в чат-боті</a>
+
+  <div class="stats-row" style="margin-top:var(--spacing);">
+    <div class="stat-card">
+      <div class="stat-number" style="color:var(--tg-button)" id="profile-stat-total">0</div>
+      <div class="stat-label">Запитів</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" style="color:var(--c-green)" id="profile-stat-replied">0</div>
+      <div class="stat-label">Відповідей</div>
+    </div>
+  </div>
+
+  <div class="profile-version">
+    Прозоро v2.0.0<br>
+    Доступ до публічної інформації
+  </div>
+</div>
+
+<!-- ===================== TAB BAR ===================== -->
+<div class="tab-bar" id="tab-bar">
+  <button class="tab-bar-item active" data-tab="overview" onclick="switchTab('overview')">
+    <span class="tab-icon">📊</span>
+    <span class="tab-label">Огляд</span>
+  </button>
+  <button class="tab-bar-item" data-tab="requests" onclick="switchTab('requests')">
+    <span class="tab-icon">📋</span>
+    <span class="tab-label">Запити</span>
+  </button>
+  <button class="tab-bar-item" data-tab="library" onclick="switchTab('library')">
+    <span class="tab-icon">📚</span>
+    <span class="tab-label">Бібліотека</span>
+  </button>
+  <button class="tab-bar-item" data-tab="profile" onclick="switchTab('profile')">
+    <span class="tab-icon">👤</span>
+    <span class="tab-label">Профіль</span>
+  </button>
+</div>
+
+<script>
+/* ============================================
+   CONFIGURATION
+   ============================================ */
+// API_BASE: empty = same origin (served by Go bot directly)
+// Set window.__API_BASE__ before this script or change below for Vercel deployment
+const API_BASE = window.location.pathname.startsWith('/prozoro') ? '/prozoro' : (window.__API_BASE__ || '');
+
+/* ============================================
+   TELEGRAM WEBAPP INIT
+   ============================================ */
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  tg.enableClosingConfirmation();
+}
+
+/* ============================================
+   THEME APPLICATION (Telegram native theme)
+   — Defaults to beautiful dark palette,
+     then applies Telegram params if available
+   ============================================ */
+function applyTheme() {
+  const root = document.documentElement;
+
+  // Dark defaults are already set in CSS :root
+  // Only override if Telegram provides theme params
+  if (!tg) return;
+
+  const s = tg.themeParams;
+  if (!s || Object.keys(s).length === 0) return; // No Telegram params → keep dark defaults
+
+  // Apply Telegram theme params only when they exist
+  if (s.bg_color) root.style.setProperty('--tg-bg', s.bg_color);
+  if (s.text_color) root.style.setProperty('--tg-text', s.text_color);
+  if (s.hint_color) root.style.setProperty('--tg-hint', s.hint_color);
+  if (s.subtitle_color) root.style.setProperty('--tg-subtitle', s.subtitle_color);
+  if (s.secondary_bg_color) root.style.setProperty('--tg-secondary-bg', s.secondary_bg_color);
+  else if (s.bg_color) root.style.setProperty('--tg-secondary-bg', s.bg_color);
+  if (s.button_color) root.style.setProperty('--tg-button', s.button_color);
+  if (s.button_text_color) root.style.setProperty('--tg-button-text', s.button_text_color);
+  if (s.link_color) root.style.setProperty('--tg-link', s.link_color);
+  if (s.destructive_text_color) root.style.setProperty('--tg-destructive', s.destructive_text_color);
+
+  const cardColor = s.section_bg_color || s.secondary_bg_color || '#161b22';
+  root.style.setProperty('--tg-card', cardColor);
+
+  const bgHex = s.bg_color || '#0d1117';
+  const isDark = isColorDark(bgHex);
+  root.style.setProperty('--tg-border', isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)');
+
+  const tabBar = document.getElementById('tab-bar');
+  if (tabBar) {
+    if (isDark) {
+      tabBar.style.background = `rgba(${hexToRgb(bgHex).join(',')},0.78)`;
+    } else {
+      tabBar.style.background = 'rgba(255,255,255,0.85)';
+    }
+  }
+}
+
+function isColorDark(hex) {
+  if (!hex) return true; // Default to dark
+  const c = hex.replace('#', '');
+  const r = parseInt(c.substring(0,2), 16);
+  const g = parseInt(c.substring(2,4), 16);
+  const b = parseInt(c.substring(4,6), 16);
+  return (r * 0.299 + g * 0.587 + b * 0.114) < 128;
+}
+
+function hexToRgb(hex) {
+  const c = hex.replace('#', '');
+  return [parseInt(c.substring(0,2),16), parseInt(c.substring(2,4),16), parseInt(c.substring(4,6),16)];
+}
+
+if (tg) { tg.onEvent('themeChanged', applyTheme); }
+applyTheme();
+
+/* ============================================
+   TAB NAVIGATION
+   ============================================ */
+let currentTab = 'overview';
+function switchTab(tabName) {
+  currentTab = tabName;
+  document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-bar-item').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + tabName).classList.add('active');
+  document.querySelector(`.tab-bar-item[data-tab="${tabName}"]`).classList.add('active');
+
+  // Lazy load data
+  if (tabName === 'overview') loadOverview();
+  if (tabName === 'requests') loadRequests();
+  if (tabName === 'library') { loadTemplates(); }
+  if (tabName === 'profile') loadProfile();
+}
+
+/* ============================================
+   API HELPER (aligned with Go bot endpoints)
+   ============================================ */
+async function apiCall(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  // Primary auth: full initData for HMAC validation
+  if (tg && tg.initData) {
+    headers['X-Init-Data'] = tg.initData;
+  }
+  // Fallback auth: send user_id directly from Telegram SDK
+  // tg.initDataUnsafe is only available inside Telegram app, so this is safe
+  if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
+    headers['X-User-ID'] = String(tg.initDataUnsafe.user.id);
+  }
+  // Build URL with fallback query params
+  let url = API_BASE + path;
+  const params = [];
+  if (tg && tg.initData) {
+    params.push('init_data=' + encodeURIComponent(tg.initData));
+  }
+  if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
+    params.push('user_id=' + tg.initDataUnsafe.user.id);
+  }
+  if (params.length > 0) {
+    url += (url.includes('?') ? '&' : '?') + params.join('&');
+  }
+  const opts = { headers, ...options };
+  try {
+    const resp = await fetch(url, opts);
+    const data = await resp.json();
+    if (!data.ok) {
+      console.error('API error:', data.error, path);
+      return null;
+    }
+    return data.data;
+  } catch (e) {
+    console.error('API call failed:', e, path);
+    return null;
+  }
+}
+
+/* ============================================
+   TOAST
+   ============================================ */
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+/* ============================================
+   FORMAT HELPERS
+   ============================================ */
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch { return dateStr; }
+}
+
+function pluralDays(n) {
+  const abs = Math.abs(n);
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'день';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'дні';
+  return 'днів';
+}
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return 'Доброго ранку';
+  if (h >= 12 && h < 18) return 'Добрий день';
+  if (h >= 18 && h < 23) return 'Добрий вечір';
+  return 'Доброї ночі';
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/* ============================================
+   SEND COMMAND TO BOT
+   ============================================ */
+function sendBotCommand(cmd) {
+  if (tg) {
+    // Close mini-app and send command hint
+    tg.close();
+  }
+  showToast('Введіть ' + cmd + ' у чат-боті');
+}
+
+/* ============================================
+   OVERVIEW TAB
+   ============================================ */
+async function loadOverview() {
+  // Set greeting with user's name
+  const firstName = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) || '';
+  document.getElementById('greeting-text').textContent =
+    firstName ? `${getGreeting()}, ${firstName}! 👋` : `${getGreeting()}! 👋`;
+
+  // Load stats
+  const stats = await apiCall('/api/stats');
+  if (stats) {
+    document.getElementById('stat-total').textContent = stats.total || 0;
+    document.getElementById('stat-replied').textContent = stats.replied || 0;
+    document.getElementById('stat-pending').textContent = stats.pending || 0;
+    document.getElementById('stat-overdue').textContent = stats.overdue || 0;
+
+    // Render donut
+    renderDonut(stats.replied || 0, stats.pending || 0, stats.overdue || 0, stats.total || 0);
+  }
+
+  // Load requests for deadline & last response
+  const requests = await apiCall('/api/requests');
+  if (requests && requests.length > 0) {
+    // Nearest deadline (pending requests)
+    const pending = requests
+      .filter(r => r.status === 'pending')
+      .sort((a, b) => a.daysLeft - b.daysLeft);
+
+    const dlCard = document.getElementById('deadline-card');
+    if (pending.length > 0) {
+      const nearest = pending[0];
+      const dlCountdown = document.getElementById('deadline-countdown');
+      const dlOrgan = document.getElementById('deadline-organ');
+
+      if (nearest.daysLeft < 0) {
+        dlCountdown.textContent = `Прострочено на ${Math.abs(nearest.daysLeft)} ${pluralDays(nearest.daysLeft)}`;
+        dlCountdown.style.color = 'var(--c-red)';
+        dlCard.style.borderLeftColor = 'var(--c-red)';
+      } else if (nearest.daysLeft === 0) {
+        dlCountdown.textContent = 'Останній день!';
+        dlCountdown.style.color = 'var(--c-orange)';
+        dlCard.style.borderLeftColor = 'var(--c-orange)';
+      } else if (nearest.daysLeft === 1) {
+        dlCountdown.textContent = '1 день';
+        dlCountdown.style.color = 'var(--c-orange)';
+      } else {
+        dlCountdown.textContent = `${nearest.daysLeft} ${pluralDays(nearest.daysLeft)}`;
+        dlCountdown.style.color = 'var(--c-orange)';
+      }
+      dlOrgan.textContent = nearest.recipientName || nearest.recipientEmail || '';
+      dlCard.style.display = '';
+    } else {
+      dlCard.style.display = 'none';
+    }
+
+    // Last response
+    const replied = requests
+      .filter(r => r.status === 'replied')
+      .sort((a, b) => new Date(b.replyReceivedAt || b.date) - new Date(a.replyReceivedAt || a.date));
+
+    const lrCard = document.getElementById('last-response-card');
+    if (replied.length > 0) {
+      const last = replied[0];
+      document.getElementById('last-response-subject').textContent = last.subject || 'Без теми';
+      document.getElementById('last-response-date').textContent = formatDate(last.replyReceivedAt || last.date);
+      lrCard.style.display = '';
+    } else {
+      lrCard.style.display = 'none';
+    }
+  } else {
+    document.getElementById('deadline-card').style.display = 'none';
+    document.getElementById('last-response-card').style.display = 'none';
+  }
+}
+
+/* ============================================
+   DONUT CHART (pure CSS conic-gradient)
+   ============================================ */
+function renderDonut(replied, pending, overdue, total) {
+  const section = document.getElementById('donut-section');
+  if (total === 0) { section.style.display = 'none'; return; }
+  section.style.display = '';
+
+  const donut = document.getElementById('donut-chart');
+  document.getElementById('donut-total').textContent = total;
+
+  const segments = [
+    { value: replied, color: 'var(--c-green)' },
+    { value: pending, color: 'var(--c-yellow)' },
+    { value: overdue, color: 'var(--c-red)' },
+  ];
+
+  let gradient = '';
+  let offset = 0;
+  for (const seg of segments) {
+    if (seg.value === 0) continue;
+    const pct = (seg.value / total) * 100;
+    gradient += `${seg.color} ${offset}% ${offset + pct}%, `;
+    offset += pct;
+  }
+  gradient = gradient || 'var(--tg-border) 0% 100%, ';
+  gradient = gradient.slice(0, -2);
+
+  donut.style.background = `conic-gradient(${gradient})`;
+}
+
+/* ============================================
+   REQUESTS TAB
+   ============================================ */
+let currentFilter = 'all';
+let cachedRequests = null;
+
+function setFilter(filter) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.filter === filter);
+  });
+  renderRequests();
+}
+
+async function loadRequests() {
+  const requests = await apiCall('/api/requests');
+  cachedRequests = requests || [];
+  renderRequests();
+}
+
+function renderRequests() {
+  const list = document.getElementById('request-list');
+  const empty = document.getElementById('requests-empty');
+
+  if (!cachedRequests || cachedRequests.length === 0) {
+    list.innerHTML = '';
+    list.appendChild(empty);
+    empty.style.display = '';
+    return;
+  }
+
+  // Filter
+  let filtered = cachedRequests;
+  if (currentFilter === 'pending') {
+    filtered = cachedRequests.filter(r => r.status === 'pending');
+  } else if (currentFilter === 'replied') {
+    filtered = cachedRequests.filter(r => r.status === 'replied');
+  } else if (currentFilter === 'overdue') {
+    filtered = cachedRequests.filter(r => r.status === 'overdue');
+  }
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>Немає запитів у цій категорії</p></div>';
+    return;
+  }
+
+  const statusMap = {
+    pending:  { label: 'Очікує',      css: 'status-pending',  badge: 'badge-pending' },
+    replied:  { label: 'Відповідь',    css: 'status-replied',  badge: 'badge-replied' },
+    overdue:  { label: 'Прострочено',  css: 'status-overdue',  badge: 'badge-overdue' },
+    bounced:  { label: 'Не доставлено', css: 'status-bounced', badge: 'badge-bounced' },
+  };
+
+  list.innerHTML = filtered.map(r => {
+    const st = statusMap[r.status] || statusMap.pending;
+    let daysHtml = '';
+    if (r.status !== 'replied' && r.status !== 'bounced') {
+      let daysClass = 'ok';
+      if (r.daysLeft < 0) daysClass = 'urgent';
+      else if (r.daysLeft <= 1) daysClass = 'warning';
+      daysHtml = `<span class="request-days ${daysClass}">${r.daysLeft < 0 ? Math.abs(r.daysLeft) + 'д' : r.daysLeft + 'д'}</span>`;
+    }
+    return `<div class="request-card ${st.css}">
+      <div class="request-card-header">
+        <span class="request-organ">${escHtml(r.recipientName || r.recipientEmail)}</span>
+        ${daysHtml}
+      </div>
+      <div class="request-subject">${escHtml(r.subject)}</div>
+      <div class="request-meta">
+        <span class="request-date">${formatDate(r.date)}</span>
+        <span class="request-status-badge ${st.badge}">${st.label}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ============================================
+   LIBRARY TAB
+   ============================================ */
+async function loadTemplates() {
+  const templates = await apiCall('/api/templates');
+  const list = document.getElementById('templates-list');
+  if (!templates || templates.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>Шаблони недоступні</p></div>';
+    return;
+  }
+  list.innerHTML = templates.map(t => `
+    <div class="quick-template-item" onclick="useTemplate('${escHtml(t.id)}')">
+      <span class="qt-icon">${t.title.split(' ')[0]}</span>
+      <div>
+        <div class="qt-title">${escHtml(t.title.replace(/^[^\s]+\s/, ''))}</div>
+        <div class="qt-desc">${escHtml(t.subject)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function useTemplate(id) {
+  const templates = document.querySelectorAll('.quick-template-item');
+  // Find template and put its body into textarea
+  // We'll use the API data directly
+  apiCall('/api/templates').then(templates => {
+    if (!templates) return;
+    const t = templates.find(x => x.id === id);
+    if (t) {
+      document.getElementById('gen-description').value = t.subject + ': ' + t.body;
+      document.getElementById('gen-description').focus();
+      showToast('Шаблон завантажено');
+    }
+  });
+}
+
+async function generateRequest() {
+  const desc = document.getElementById('gen-description').value.trim();
+  if (!desc) { showToast('Опишіть, що вас цікавить'); return; }
+
+  const btn = document.getElementById('gen-btn');
+  const result = document.getElementById('gen-result');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  result.classList.remove('visible');
+
+  try {
+    const data = await apiCall('/api/generate-template', {
+      method: 'POST',
+      body: JSON.stringify({ description: desc }),
+    });
+
+    if (!data) {
+      showToast('Помилка генерації');
+      return;
+    }
+
+    document.getElementById('gen-result-body').textContent = data.body || '';
+
+    // Law refs
+    const lawRefsEl = document.getElementById('gen-law-refs');
+    const lawItemsEl = document.getElementById('gen-law-items');
+    if (data.lawRefs && data.lawRefs.length > 0) {
+      lawItemsEl.innerHTML = data.lawRefs.map(lr =>
+        `<div class="gen-law-item"><span class="gen-law-article">${escHtml(lr.article)}</span> — ${escHtml(lr.title)}</div>`
+      ).join('');
+      lawRefsEl.style.display = '';
+    } else {
+      lawRefsEl.style.display = 'none';
+    }
+
+    // Recipient hint
+    const hintEl = document.getElementById('gen-recipient-hint');
+    if (data.recipientHint) {
+      hintEl.textContent = '📌 Рекомендований орган: ' + data.recipientHint;
+      hintEl.style.display = '';
+    } else {
+      hintEl.style.display = 'none';
+    }
+
+    result.classList.add('visible');
+  } catch (e) {
+    showToast('Помилка з\'єднання');
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+function copyResult() {
+  const body = document.getElementById('gen-result-body').textContent;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(body).then(() => showToast('Скопійовано!'));
+  } else {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = body;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('Скопійовано!');
+  }
+}
+
+function useInBot() {
+  if (tg) {
+    tg.sendData(JSON.stringify({ action: 'use_template', body: document.getElementById('gen-result-body').textContent }));
+    tg.close();
+  } else {
+    showToast('Доступно лише в Telegram');
+  }
+}
+
+/* ============================================
+   PROFILE TAB
+   ============================================ */
+async function loadProfile() {
+  const profile = await apiCall('/api/me');
+  if (!profile) return;
+
+  document.getElementById('profile-fullname').textContent = profile.fullName || '—';
+  document.getElementById('profile-email').textContent = profile.email || '—';
+  document.getElementById('profile-postal').textContent = profile.address || '—';
+  document.getElementById('profile-name').textContent = profile.fullName || 'Анонім';
+
+  // Avatar
+  const avatar = document.getElementById('profile-avatar');
+  if (profile.firstName) {
+    avatar.textContent = profile.firstName.charAt(0).toUpperCase();
+  }
+
+  // Stats
+  const stats = await apiCall('/api/stats');
+  if (stats) {
+    document.getElementById('profile-stat-total').textContent = stats.total || 0;
+    document.getElementById('profile-stat-replied').textContent = stats.replied || 0;
+  }
+}
+
+/* ============================================
+   INIT
+   ============================================ */
+loadOverview();
+</script>
+<script>
+// Register service worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+// Show install prompt
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  // Could show a custom install button here
+});
+</script>
+</body>
+</html>
+
+
+

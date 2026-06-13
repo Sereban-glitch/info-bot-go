@@ -1,0 +1,22 @@
+{
+  "name": "Прозоро — Запити на публічну інформацію",
+  "short_name": "Прозоро",
+  "description": "Створюйте та відстежуйте запити на публічну інформацію згідно Закону України №2939-VI",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1117",
+  "theme_color": "#58a6ff",
+  "categories": ["government", "utilities", "productivity"],
+  "lang": "uk",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "prefer_related_applications": false
+}

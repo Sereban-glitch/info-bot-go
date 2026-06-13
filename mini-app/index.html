@@ -1,0 +1,1719 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Прозоро — Доступ до публічної інформації</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+/* ============================================
+   CSS VARIABLES & THEME
+   ============================================ */
+:root {
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-pill: 100px;
+  --spacing: 16px;
+  --spacing-sm: 10px;
+  --spacing-xs: 6px;
+  --tab-height: 60px;
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  /* Telegram theme overrides — will be applied from JS */
+  --tg-bg: #ffffff;
+  --tg-text: #1a1a1a;
+  --tg-hint: #8e8e93;
+  --tg-subtitle: #8e8e93;
+  --tg-card: #f2f2f7;
+  --tg-border: rgba(0,0,0,0.06);
+  --tg-button: #007aff;
+  --tg-button-text: #ffffff;
+  --tg-secondary-bg: #f2f2f7;
+  --tg-destructive: #ff3b30;
+  --tg-link: #007aff;
+
+  /* Status colors */
+  --c-green: #34c759;
+  --c-yellow: #ffcc00;
+  --c-orange: #ff9500;
+  --c-red: #ff3b30;
+  --c-gray: #8e8e93;
+  --c-brown: #a2845e;
+
+  /* Shadows */
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+}
+
+/* ============================================
+   RESET & BASE
+   ============================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--tg-bg);
+  color: var(--tg-text);
+  line-height: 1.45;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  padding-bottom: calc(var(--tab-height) + 20px);
+}
+
+/* ============================================
+   TYPOGRAPHY
+   ============================================ */
+h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+h2 { font-size: 22px; font-weight: 600; letter-spacing: -0.3px; }
+h3 { font-size: 17px; font-weight: 600; }
+p { font-size: 15px; color: var(--tg-hint); }
+small { font-size: 13px; color: var(--tg-hint); }
+
+/* ============================================
+   TAB PAGES
+   ============================================ */
+.tab-page {
+  display: none;
+  padding: var(--spacing);
+  animation: fadeIn 0.25s ease;
+}
+.tab-page.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================
+   CARDS
+   ============================================ */
+.card {
+  background: var(--tg-card);
+  border-radius: var(--radius);
+  padding: var(--spacing);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--tg-border);
+  margin-bottom: var(--spacing-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.card:active {
+  transform: scale(0.985);
+}
+
+/* ============================================
+   TAB BAR (BOTTOM)
+   ============================================ */
+.tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--tab-height);
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 0.5px solid var(--tg-border);
+  display: flex;
+  align-items: stretch;
+  z-index: 1000;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.tab-bar-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--tg-hint);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.2s ease;
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: var(--font);
+}
+.tab-bar-item.active {
+  color: var(--tg-button);
+}
+.tab-bar-item .tab-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+.tab-bar-item .tab-label {
+  font-size: 10px;
+  letter-spacing: 0.1px;
+}
+
+/* ============================================
+   OVERVIEW TAB
+   ============================================ */
+.greeting {
+  margin-bottom: var(--spacing);
+}
+.greeting h1 {
+  margin-bottom: 4px;
+}
+.greeting p {
+  font-size: 15px;
+}
+
+.stats-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing);
+}
+
+.stat-card {
+  background: var(--tg-card);
+  border-radius: var(--radius);
+  padding: 14px var(--spacing);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--tg-border);
+}
+.stat-card .stat-number {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.stat-card .stat-label {
+  font-size: 13px;
+  color: var(--tg-hint);
+  margin-top: 2px;
+}
+
+.donut-section {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing);
+  margin-bottom: var(--spacing);
+}
+.donut-chart {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.donut-hole {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 56px;
+  height: 56px;
+  background: var(--tg-card);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  z-index: 1;
+}
+.donut-legend {
+  flex: 1;
+}
+.donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 3px 0;
+  color: var(--tg-text);
+}
+.donut-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.deadline-card {
+  border-left: 4px solid var(--c-orange);
+}
+.deadline-card .deadline-label {
+  font-size: 13px;
+  color: var(--tg-hint);
+  margin-bottom: 4px;
+}
+.deadline-card .deadline-countdown {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--c-orange);
+}
+.deadline-card .deadline-organ {
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.last-response-card {
+  border-left: 4px solid var(--c-green);
+}
+.last-response-card .response-label {
+  font-size: 13px;
+  color: var(--tg-hint);
+  margin-bottom: 6px;
+}
+.last-response-card .response-subject {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.last-response-card .response-date {
+  font-size: 13px;
+  color: var(--tg-hint);
+}
+
+/* ============================================
+   REQUESTS TAB
+   ============================================ */
+.filter-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: var(--spacing);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+}
+.filter-row::-webkit-scrollbar { display: none; }
+
+.filter-btn {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--tg-border);
+  background: transparent;
+  color: var(--tg-text);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.filter-btn.active {
+  background: var(--tg-button);
+  color: var(--tg-button-text);
+  border-color: var(--tg-button);
+}
+
+.request-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.request-card {
+  background: var(--tg-card);
+  border-radius: var(--radius);
+  padding: var(--spacing);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--tg-border);
+  border-left: 5px solid var(--c-yellow);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.request-card:active {
+  transform: scale(0.985);
+}
+.request-card.status-replied { border-left-color: var(--c-green); }
+.request-card.status-pending { border-left-color: var(--c-yellow); }
+.request-card.status-lastday { border-left-color: var(--c-orange); }
+.request-card.status-expired { border-left-color: var(--c-red); }
+.request-card.status-refused { border-left-color: var(--c-gray); }
+.request-card.status-bounced { border-left-color: var(--c-brown); }
+
+.request-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.request-organ {
+  font-size: 15px;
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.request-days {
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(0,0,0,0.05);
+}
+.request-days.urgent {
+  background: rgba(255,59,48,0.12);
+  color: var(--c-red);
+}
+.request-days.warning {
+  background: rgba(255,149,0,0.12);
+  color: var(--c-orange);
+}
+.request-days.ok {
+  background: rgba(52,199,89,0.12);
+  color: var(--c-green);
+}
+
+.request-subject {
+  font-size: 14px;
+  color: var(--tg-hint);
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.request-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.request-date {
+  font-size: 12px;
+  color: var(--tg-hint);
+}
+.request-status-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  color: #fff;
+}
+.badge-replied { background: var(--c-green); }
+.badge-pending { background: var(--c-yellow); color: #1a1a1a; }
+.badge-lastday { background: var(--c-orange); }
+.badge-expired { background: var(--c-red); }
+.badge-refused { background: var(--c-gray); }
+.badge-bounced { background: var(--c-brown); }
+
+/* Timeline */
+.request-timeline {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s ease, margin-top 0.35s ease, opacity 0.3s ease;
+  opacity: 0;
+  margin-top: 0;
+}
+.request-timeline.open {
+  max-height: 200px;
+  opacity: 1;
+  margin-top: 14px;
+}
+
+.timeline {
+  position: relative;
+  padding-left: 24px;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--tg-border);
+  border-radius: 2px;
+}
+
+.timeline-step {
+  position: relative;
+  padding: 6px 0;
+  font-size: 13px;
+  color: var(--tg-hint);
+}
+.timeline-step::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 10px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--tg-border);
+  border: 2px solid var(--tg-card);
+}
+.timeline-step.done {
+  color: var(--tg-text);
+}
+.timeline-step.done::before {
+  background: var(--c-green);
+}
+.timeline-step.current {
+  color: var(--tg-button);
+  font-weight: 600;
+}
+.timeline-step.current::before {
+  background: var(--tg-button);
+  box-shadow: 0 0 0 3px rgba(0,122,255,0.2);
+}
+.timeline-step .step-icon {
+  margin-right: 4px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--tg-hint);
+}
+.empty-state .empty-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+.empty-state p {
+  font-size: 15px;
+  color: var(--tg-hint);
+}
+
+/* ============================================
+   GENERATOR TAB
+   ============================================ */
+.generator-hero {
+  text-align: center;
+  padding: 12px 0 var(--spacing);
+}
+.generator-hero h2 {
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+.generator-hero p {
+  font-size: 14px;
+}
+
+.gen-textarea {
+  width: 100%;
+  min-height: 120px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--tg-border);
+  background: var(--tg-card);
+  color: var(--tg-text);
+  padding: 14px var(--spacing);
+  font-size: 16px;
+  font-family: var(--font);
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  -webkit-appearance: none;
+}
+.gen-textarea:focus {
+  border-color: var(--tg-button);
+  box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+}
+.gen-textarea::placeholder {
+  color: var(--tg-hint);
+}
+
+.gen-input {
+  width: 100%;
+  height: 48px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--tg-border);
+  background: var(--tg-card);
+  color: var(--tg-text);
+  padding: 0 var(--spacing);
+  font-size: 16px;
+  font-family: var(--font);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  -webkit-appearance: none;
+}
+.gen-input:focus {
+  border-color: var(--tg-button);
+  box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+}
+.gen-input::placeholder {
+  color: var(--tg-hint);
+}
+
+.gen-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tg-hint);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  margin-top: var(--spacing);
+}
+
+.gen-btn {
+  width: 100%;
+  height: 52px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--tg-button);
+  color: var(--tg-button-text);
+  font-size: 17px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  margin-top: var(--spacing);
+  transition: all 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+  overflow: hidden;
+}
+.gen-btn:active {
+  transform: scale(0.98);
+  filter: brightness(0.92);
+}
+.gen-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.gen-btn .spinner {
+  display: none;
+  width: 22px;
+  height: 22px;
+  border: 2.5px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin: 0 auto;
+}
+.gen-btn.loading .btn-text { display: none; }
+.gen-btn.loading .spinner { display: block; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Result card */
+.gen-result {
+  margin-top: var(--spacing);
+  display: none;
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.gen-result.visible {
+  display: block;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.gen-result-card {
+  background: var(--tg-card);
+  border-radius: var(--radius);
+  padding: var(--spacing);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--tg-border);
+}
+.gen-result-card .result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.gen-result-card .result-ai-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+}
+.gen-result-card .result-body {
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: var(--tg-text);
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--tg-bg);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--spacing-sm);
+}
+.gen-result-card .result-actions {
+  display: flex;
+  gap: 8px;
+}
+.result-action-btn {
+  flex: 1;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.result-action-btn:active {
+  transform: scale(0.97);
+}
+.result-action-btn.primary {
+  background: var(--tg-button);
+  color: var(--tg-button-text);
+}
+.result-action-btn.secondary {
+  background: var(--tg-secondary-bg);
+  color: var(--tg-text);
+  border: 1px solid var(--tg-border);
+}
+
+/* Quick templates */
+.quick-templates {
+  margin-top: var(--spacing);
+}
+.quick-templates h3 {
+  font-size: 15px;
+  color: var(--tg-hint);
+  margin-bottom: var(--spacing-sm);
+}
+.quick-template-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+.quick-template-item {
+  background: var(--tg-card);
+  border-radius: var(--radius-sm);
+  padding: 14px var(--spacing);
+  border: 1px solid var(--tg-border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.quick-template-item:active {
+  transform: scale(0.98);
+}
+.quick-template-item .qt-icon {
+  font-size: 24px;
+  width: 40px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.quick-template-item .qt-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.quick-template-item .qt-desc {
+  font-size: 13px;
+  color: var(--tg-hint);
+}
+
+/* Magic shimmer for generator */
+.magic-bg {
+  position: relative;
+  overflow: hidden;
+}
+.magic-bg::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(from 0deg, transparent, rgba(0,122,255,0.05), transparent, rgba(102,126,234,0.05), transparent);
+  animation: magicRotate 8s linear infinite;
+  pointer-events: none;
+}
+@keyframes magicRotate {
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   PROFILE TAB
+   ============================================ */
+.profile-header {
+  text-align: center;
+  padding: 20px 0;
+}
+.profile-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--tg-button);
+  color: var(--tg-button-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 auto 12px;
+}
+.profile-name {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.profile-fields {
+  margin-top: var(--spacing);
+}
+.profile-field {
+  padding: var(--spacing);
+  border-bottom: 1px solid var(--tg-border);
+}
+.profile-field:last-child {
+  border-bottom: none;
+}
+.profile-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--tg-hint);
+  margin-bottom: 4px;
+}
+.profile-field-value {
+  font-size: 16px;
+  color: var(--tg-text);
+}
+
+.profile-edit-link {
+  display: block;
+  text-align: center;
+  padding: var(--spacing);
+  color: var(--tg-link);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  margin-top: var(--spacing-sm);
+}
+
+.profile-version {
+  text-align: center;
+  margin-top: 32px;
+  font-size: 12px;
+  color: var(--tg-hint);
+}
+
+/* ============================================
+   TOAST
+   ============================================ */
+.toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-80px);
+  background: var(--tg-text);
+  color: var(--tg-bg);
+  padding: 12px 24px;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 9999;
+  opacity: 0;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ============================================
+   SKELETON LOADER
+   ============================================ */
+.skeleton {
+  background: linear-gradient(90deg, var(--tg-border) 25%, rgba(255,255,255,0.3) 50%, var(--tg-border) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-card {
+  height: 80px;
+  margin-bottom: var(--spacing-sm);
+  border-radius: var(--radius);
+}
+
+/* ============================================
+   SCROLLBAR
+   ============================================ */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--tg-border);
+  border-radius: 4px;
+}
+
+/* ============================================
+   DARK MODE (Telegram sets --tg-theme-* vars)
+   ============================================ */
+</style>
+</head>
+<body>
+
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
+<!-- ===================== TAB 1: ОГЛЯД ===================== -->
+<div class="tab-page active" id="tab-overview">
+  <div class="greeting">
+    <h1 id="greeting-text">Добрий день! 👋</h1>
+    <p>Ось ваші запити на сьогодні</p>
+  </div>
+
+  <div class="stats-row" id="stats-row">
+    <div class="stat-card">
+      <div class="stat-number" style="color:var(--tg-button)" id="stat-sent">—</div>
+      <div class="stat-label">Відправлено</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" style="color:var(--c-green)" id="stat-replied">—</div>
+      <div class="stat-label">Отримано</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" style="color:var(--c-yellow)" id="stat-pending">—</div>
+      <div class="stat-label">Очікує</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" style="color:var(--c-red)" id="stat-expired">—</div>
+      <div class="stat-label">Прострочено</div>
+    </div>
+  </div>
+
+  <div class="card donut-section">
+    <div class="donut-chart" id="donut-chart">
+      <div class="donut-hole" id="donut-total">—</div>
+    </div>
+    <div class="donut-legend" id="donut-legend">
+      <div class="donut-legend-item"><span class="donut-legend-dot" style="background:var(--c-green)"></span> Успішно</div>
+      <div class="donut-legend-item"><span class="donut-legend-dot" style="background:var(--c-yellow)"></span> Очікує</div>
+      <div class="donut-legend-item"><span class="donut-legend-dot" style="background:var(--c-red)"></span> Прострочено</div>
+      <div class="donut-legend-item"><span class="donut-legend-dot" style="background:var(--c-gray)"></span> Відмовлено</div>
+    </div>
+  </div>
+
+  <div class="card deadline-card" id="deadline-card">
+    <div class="deadline-label">⏰ Найближчий дедлайн</div>
+    <div class="deadline-countdown" id="deadline-countdown">Завантаження...</div>
+    <div class="deadline-organ" id="deadline-organ"></div>
+  </div>
+
+  <div class="card last-response-card" id="last-response-card">
+    <div class="response-label">📬 Остання відповідь</div>
+    <div class="response-subject" id="last-response-subject">—</div>
+    <div class="response-date" id="last-response-date"></div>
+  </div>
+</div>
+
+<!-- ===================== TAB 2: ЗАПИТИ ===================== -->
+<div class="tab-page" id="tab-requests">
+  <h2 style="margin-bottom:16px;">Запити</h2>
+
+  <div class="filter-row">
+    <button class="filter-btn active" data-filter="all">Усі</button>
+    <button class="filter-btn" data-filter="pending">Очікують</button>
+    <button class="filter-btn" data-filter="replied">Відповіді</button>
+    <button class="filter-btn" data-filter="expired">Прострочені</button>
+  </div>
+
+  <div class="request-list" id="request-list">
+    <div class="empty-state" id="requests-empty">
+      <div class="empty-icon">📭</div>
+      <p>Запити відсутні</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== TAB 3: ГЕНЕРАТОР ===================== -->
+<div class="tab-page" id="tab-generator">
+  <div class="generator-hero">
+    <h2>✨ Генератор запитів</h2>
+    <p>Опишіть, що хочете дізнатися — ШІ складе юридичний запит</p>
+  </div>
+
+  <label class="gen-label">Що вас цікавить?</label>
+  <textarea
+    class="gen-textarea"
+    id="gen-description"
+    placeholder="Опишіть коротко, яку інформацію хочете отримати..."
+    maxlength="1000"
+  ></textarea>
+
+  <label class="gen-label">Орган (необов'язково)</label>
+  <input
+    class="gen-input"
+    id="gen-organ"
+    type="text"
+    placeholder="Наприклад: Міністерство юстиції"
+    maxlength="200"
+  />
+
+  <button class="gen-btn" id="gen-btn" onclick="generateRequest()">
+    <span class="btn-text">✨ Згенерувати запит</span>
+    <div class="spinner"></div>
+  </button>
+
+  <div class="gen-result" id="gen-result">
+    <div class="gen-result-card magic-bg">
+      <div class="result-header">
+        <span style="font-weight:600;">Згенерований запит</span>
+        <span class="result-ai-badge" id="gen-ai-badge">AI</span>
+      </div>
+      <div class="result-body" id="gen-result-body"></div>
+      <div class="result-actions">
+        <button class="result-action-btn primary" onclick="copyResult()">📋 Скопіювати</button>
+        <button class="result-action-btn secondary" onclick="editInBot()">✏️ Відредагувати в боті</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="quick-templates">
+    <h3>Швидкі шаблони</h3>
+    <div class="quick-template-list">
+      <div class="quick-template-item" onclick="useTemplate('budget')">
+        <div class="qt-icon">🏛️</div>
+        <div>
+          <div class="qt-title">Бюджет міста</div>
+          <div class="qt-desc">Витрати та звіти міського бюджету</div>
+        </div>
+      </div>
+      <div class="quick-template-item" onclick="useTemplate('land')">
+        <div class="qt-icon">🗺️</div>
+        <div>
+          <div class="qt-title">Земельні ділянки</div>
+          <div class="qt-desc">Інформація про відведення земельних ділянок</div>
+        </div>
+      </div>
+      <div class="quick-template-item" onclick="useTemplate('court')">
+        <div class="qt-icon">⚖️</div>
+        <div>
+          <div class="qt-title">Судові рішення</div>
+          <div class="qt-desc">Запит на судові рішення та справи</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== TAB 4: ПРОФІЛЬ ===================== -->
+<div class="tab-page" id="tab-profile">
+  <div class="profile-header">
+    <div class="profile-avatar" id="profile-avatar">?</div>
+    <div class="profile-name" id="profile-name">Завантаження...</div>
+  </div>
+
+  <div class="card">
+    <div class="profile-fields">
+      <div class="profile-field">
+        <div class="profile-field-label">ПІБ</div>
+        <div class="profile-field-value" id="profile-fullname">—</div>
+      </div>
+      <div class="profile-field">
+        <div class="profile-field-label">Email</div>
+        <div class="profile-field-value" id="profile-email">—</div>
+      </div>
+      <div class="profile-field">
+        <div class="profile-field-label">Поштова адреса</div>
+        <div class="profile-field-value" id="profile-postal">—</div>
+      </div>
+    </div>
+  </div>
+
+  <a class="profile-edit-link" id="profile-edit-link" href="#">✏️ Редагувати в боті</a>
+
+  <div class="profile-version">
+    Прозоро v1.0.0<br>
+    Доступ до публічної інформації
+  </div>
+</div>
+
+<!-- ===================== TAB BAR ===================== -->
+<div class="tab-bar" id="tab-bar">
+  <button class="tab-bar-item active" data-tab="overview">
+    <span class="tab-icon">📊</span>
+    <span class="tab-label">Огляд</span>
+  </button>
+  <button class="tab-bar-item" data-tab="requests">
+    <span class="tab-icon">📋</span>
+    <span class="tab-label">Запити</span>
+  </button>
+  <button class="tab-bar-item" data-tab="generator">
+    <span class="tab-icon">📚</span>
+    <span class="tab-label">Генератор</span>
+  </button>
+  <button class="tab-bar-item" data-tab="profile">
+    <span class="tab-icon">👤</span>
+    <span class="tab-label">Профіль</span>
+  </button>
+</div>
+
+<script>
+/* ============================================
+   CONFIGURATION
+   ============================================ */
+const API_BASE = window.__API_BASE__ || '/api';
+
+/* ============================================
+   TELEGRAM WEBAPP INIT
+   ============================================ */
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  tg.enableClosingConfirmation();
+}
+
+/* ============================================
+   THEME APPLICATION
+   ============================================ */
+function applyTheme() {
+  if (!tg) return;
+  const root = document.documentElement;
+  const s = tg.themeParams;
+  if (s.bg_color) root.style.setProperty('--tg-bg', s.bg_color);
+  if (s.text_color) root.style.setProperty('--tg-text', s.text_color);
+  if (s.hint_color) root.style.setProperty('--tg-hint', s.hint_color);
+  if (s.subtitle_color) root.style.setProperty('--tg-subtitle', s.subtitle_color);
+  if (s.secondary_bg_color) root.style.setProperty('--tg-secondary-bg', s.secondary_bg_color);
+  else root.style.setProperty('--tg-secondary-bg', s.bg_color || '#f2f2f7');
+  if (s.button_color) root.style.setProperty('--tg-button', s.button_color);
+  if (s.button_text_color) root.style.setProperty('--tg-button-text', s.button_text_color);
+  if (s.link_color) root.style.setProperty('--tg-link', s.link_color);
+  if (s.destructive_text_color) root.style.setProperty('--tg-destructive', s.destructive_text_color);
+
+  // Card color: use section_bg_color or derive from bg
+  const cardColor = s.section_bg_color || s.secondary_bg_color || '#f2f2f7';
+  root.style.setProperty('--tg-card', cardColor);
+
+  // Border
+  const textColor = s.text_color || '#1a1a1a';
+  const isDark = isColorDark(s.bg_color || '#ffffff');
+  root.style.setProperty('--tg-border', isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)');
+
+  // Tab bar background
+  const tabBar = document.getElementById('tab-bar');
+  if (tabBar) {
+    const bg = s.bg_color || '#ffffff';
+    tabBar.style.background = isDark
+      ? `rgba(${hexToRgb(bg).join(',')},0.85)`
+      : 'rgba(255,255,255,0.85)';
+  }
+}
+
+function isColorDark(hex) {
+  if (!hex) return false;
+  const c = hex.replace('#', '');
+  const r = parseInt(c.substring(0,2), 16);
+  const g = parseInt(c.substring(2,4), 16);
+  const b = parseInt(c.substring(4,6), 16);
+  return (r * 0.299 + g * 0.587 + b * 0.114) < 128;
+}
+
+function hexToRgb(hex) {
+  const c = hex.replace('#', '');
+  return [parseInt(c.substring(0,2),16), parseInt(c.substring(2,4),16), parseInt(c.substring(4,6),16)];
+}
+
+if (tg) {
+  tg.onEvent('themeChanged', applyTheme);
+}
+applyTheme();
+
+/* ============================================
+   TAB NAVIGATION
+   ============================================ */
+const tabItems = document.querySelectorAll('.tab-bar-item');
+const tabPages = document.querySelectorAll('.tab-page');
+
+function switchTab(tabName) {
+  tabPages.forEach(p => p.classList.remove('active'));
+  tabItems.forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + tabName).classList.add('active');
+  document.querySelector(`.tab-bar-item[data-tab="${tabName}"]`).classList.add('active');
+
+  // Lazy load data
+  if (tabName === 'overview') loadOverview();
+  if (tabName === 'requests') loadRequests();
+  if (tabName === 'profile') loadProfile();
+}
+
+tabItems.forEach(item => {
+  item.addEventListener('click', () => switchTab(item.dataset.tab));
+});
+
+/* ============================================
+   API HELPER
+   ============================================ */
+async function api(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (tg && tg.initData) {
+    headers['Authorization'] = tg.initData;
+  }
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API_BASE + path, opts);
+  if (!res.ok) {
+    const err = await res.text().catch(() => res.statusText);
+    throw new Error(err || 'Помилка сервера');
+  }
+  return res.json();
+}
+
+/* ============================================
+   TOAST
+   ============================================ */
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+/* ============================================
+   FORMAT HELPERS
+   ============================================ */
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function daysBetween(dateStr) {
+  if (!dateStr) return null;
+  const target = new Date(dateStr);
+  const now = new Date();
+  const diff = Math.ceil((target - now) / (1000 * 60 * 60 * 24));
+  return diff;
+}
+
+function pluralDays(n) {
+  const abs = Math.abs(n);
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'день';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'дні';
+  return 'днів';
+}
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return 'Доброго ранку';
+  if (h >= 12 && h < 18) return 'Добрий день';
+  if (h >= 18 && h < 23) return 'Добрий вечір';
+  return 'Доброї ночі';
+}
+
+/* ============================================
+   STATUS HELPERS
+   ============================================ */
+const STATUS_MAP = {
+  replied:  { label: 'Успішно',     css: 'status-replied',  badge: 'badge-replied',  icon: '✅' },
+  pending:  { label: 'Очікує',      css: 'status-pending',  badge: 'badge-pending',  icon: '⏳' },
+  lastday:  { label: 'Останній день', css: 'status-lastday', badge: 'badge-lastday', icon: '🟠' },
+  expired:  { label: 'Прострочено',  css: 'status-expired',  badge: 'badge-expired',  icon: '🔴' },
+  refused:  { label: 'Відмовлено',   css: 'status-refused',  badge: 'badge-refused',  icon: '⚪' },
+  bounced:  { label: 'Не доставлено', css: 'status-bounced', badge: 'badge-bounced',  icon: '⚠️' },
+};
+
+function computeStatus(req) {
+  if (req.status === 'replied' || req.status === 'refused' || req.status === 'bounced') return req.status;
+  const days = daysBetween(req.deadline || req.expiresAt);
+  if (days !== null) {
+    if (days < 0) return 'expired';
+    if (days === 0) return 'lastday';
+  }
+  return 'pending';
+}
+
+/* ============================================
+   OVERVIEW TAB
+   ============================================ */
+let overviewLoaded = false;
+let cachedStats = null;
+let cachedRequests = null;
+
+async function loadOverview() {
+  // Set greeting
+  const firstName = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) || '';
+  const greetEl = document.getElementById('greeting-text');
+  greetEl.textContent = firstName ? `${getGreeting()}, ${firstName}! 👋` : `${getGreeting()}! 👋`;
+
+  try {
+    const data = await api('GET', '/api/requests');
+    cachedRequests = data.requests || [];
+    cachedStats = data.stats || {};
+    renderOverview(cachedStats, cachedRequests);
+    overviewLoaded = true;
+  } catch (e) {
+    console.error('Overview load error:', e);
+    showToast('Не вдалося завантажити дані');
+  }
+}
+
+function renderOverview(stats, requests) {
+  // Stats
+  const total = stats.total || 0;
+  const replied = stats.replied || 0;
+  const pending = stats.pending || 0;
+  const expired = stats.expired || 0;
+  const bounced = stats.bounced || 0;
+
+  document.getElementById('stat-sent').textContent = total;
+  document.getElementById('stat-replied').textContent = replied;
+  document.getElementById('stat-pending').textContent = pending;
+  document.getElementById('stat-expired').textContent = expired;
+
+  // Donut chart
+  renderDonut(replied, pending, expired, stats.refused || 0, bounced, total);
+
+  // Nearest deadline
+  const pendingReqs = requests
+    .filter(r => r.status !== 'replied' && r.status !== 'refused' && r.status !== 'bounced')
+    .filter(r => r.deadline || r.expiresAt)
+    .sort((a, b) => new Date(a.deadline || a.expiresAt) - new Date(b.deadline || b.expiresAt));
+
+  const dlCard = document.getElementById('deadline-card');
+  if (pendingReqs.length > 0) {
+    const nearest = pendingReqs[0];
+    const dl = nearest.deadline || nearest.expiresAt;
+    const days = daysBetween(dl);
+    const dlCountdown = document.getElementById('deadline-countdown');
+    const dlOrgan = document.getElementById('deadline-organ');
+    if (days < 0) {
+      dlCountdown.textContent = `Прострочено на ${Math.abs(days)} ${pluralDays(days)}`;
+      dlCountdown.style.color = 'var(--c-red)';
+      dlCard.style.borderLeftColor = 'var(--c-red)';
+    } else if (days === 0) {
+      dlCountdown.textContent = 'Останній день!';
+      dlCountdown.style.color = 'var(--c-orange)';
+      dlCard.style.borderLeftColor = 'var(--c-orange)';
+    } else {
+      dlCountdown.textContent = `${days} ${pluralDays(days)}`;
+      dlCountdown.style.color = 'var(--c-orange)';
+    }
+    dlOrgan.textContent = nearest.recipientName || nearest.organName || '';
+  } else {
+    dlCard.style.display = 'none';
+  }
+
+  // Last response
+  const repliedReqs = requests
+    .filter(r => r.status === 'replied')
+    .sort((a, b) => new Date(b.repliedAt || b.updatedAt || b.createdAt) - new Date(a.repliedAt || a.updatedAt || a.createdAt));
+
+  const lrCard = document.getElementById('last-response-card');
+  if (repliedReqs.length > 0) {
+    const last = repliedReqs[0];
+    document.getElementById('last-response-subject').textContent = last.subject || 'Без теми';
+    document.getElementById('last-response-date').textContent = formatDate(last.repliedAt || last.updatedAt || last.createdAt);
+  } else {
+    lrCard.style.display = 'none';
+  }
+}
+
+/* ============================================
+   PURE CSS DONUT CHART
+   ============================================ */
+function renderDonut(replied, pending, expired, refused, bounced, total) {
+  const donut = document.getElementById('donut-chart');
+  const hole = document.getElementById('donut-total');
+  hole.textContent = total;
+
+  if (total === 0) {
+    donut.style.background = 'var(--tg-border)';
+    return;
+  }
+
+  // Build conic-gradient
+  const segments = [
+    { value: replied, color: 'var(--c-green)' },
+    { value: pending, color: 'var(--c-yellow)' },
+    { value: expired, color: 'var(--c-red)' },
+    { value: refused, color: 'var(--c-gray)' },
+    { value: bounced, color: 'var(--c-brown)' },
+  ];
+
+  let gradientParts = [];
+  let cumulative = 0;
+
+  segments.forEach(seg => {
+    if (seg.value === 0) return;
+    const start = (cumulative / total) * 360;
+    cumulative += seg.value;
+    const end = (cumulative / total) * 360;
+    gradientParts.push(`${seg.color} ${start}deg ${end}deg`);
+  });
+
+  if (gradientParts.length === 0) {
+    donut.style.background = 'var(--tg-border)';
+  } else {
+    donut.style.background = `conic-gradient(${gradientParts.join(', ')})`;
+  }
+
+  // Update legend counts
+  const legendItems = document.querySelectorAll('.donut-legend-item');
+  const counts = [replied, pending, expired, refused];
+  legendItems.forEach((item, i) => {
+    if (counts[i] !== undefined) {
+      const text = item.textContent.trim();
+      item.innerHTML = item.querySelector('.donut-legend-dot').outerHTML + ' ' + text.split(' ').slice(0, -1).join(' ') + ' ' + counts[i];
+    }
+  });
+}
+
+/* ============================================
+   REQUESTS TAB
+   ============================================ */
+let currentFilter = 'all';
+let requestsLoaded = false;
+
+async function loadRequests() {
+  if (!cachedRequests) {
+    try {
+      const data = await api('GET', '/api/requests');
+      cachedRequests = data.requests || [];
+      cachedStats = data.stats || {};
+    } catch (e) {
+      console.error('Requests load error:', e);
+      showToast('Не вдалося завантажити запити');
+      return;
+    }
+  }
+  renderRequests();
+  requestsLoaded = true;
+}
+
+function renderRequests() {
+  const list = document.getElementById('request-list');
+  const emptyEl = document.getElementById('requests-empty');
+
+  let filtered = cachedRequests || [];
+  if (currentFilter === 'pending') {
+    filtered = filtered.filter(r => {
+      const s = computeStatus(r);
+      return s === 'pending' || s === 'lastday';
+    });
+  } else if (currentFilter === 'replied') {
+    filtered = filtered.filter(r => r.status === 'replied');
+  } else if (currentFilter === 'expired') {
+    filtered = filtered.filter(r => computeStatus(r) === 'expired');
+  }
+
+  if (filtered.length === 0) {
+    list.innerHTML = '';
+    list.appendChild(emptyEl);
+    emptyEl.style.display = 'block';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+
+  // Sort: expired & lastday first, then pending, then replied
+  const statusOrder = { expired: 0, lastday: 1, pending: 2, bounced: 3, refused: 4, replied: 5 };
+  filtered.sort((a, b) => {
+    const sa = computeStatus(a);
+    const sb = computeStatus(b);
+    return (statusOrder[sa] || 99) - (statusOrder[sb] || 99);
+  });
+
+  list.innerHTML = filtered.map((req, idx) => {
+    const status = computeStatus(req);
+    const info = STATUS_MAP[status] || STATUS_MAP.pending;
+    const days = daysBetween(req.deadline || req.expiresAt);
+
+    let daysHtml = '';
+    if (status === 'replied') {
+      daysHtml = '<span class="request-days ok">✅</span>';
+    } else if (status === 'expired') {
+      daysHtml = `<span class="request-days urgent">-${Math.abs(days)} ${pluralDays(days)}</span>`;
+    } else if (status === 'lastday' || days === 0) {
+      daysHtml = '<span class="request-days urgent">Сьогодні!</span>';
+    } else if (days !== null && days <= 3) {
+      daysHtml = `<span class="request-days warning">${days} ${pluralDays(days)}</span>`;
+    } else if (days !== null) {
+      daysHtml = `<span class="request-days ok">${days} ${pluralDays(days)}</span>`;
+    }
+
+    // Timeline steps
+    const steps = buildTimeline(req, status);
+
+    return `
+      <div class="request-card ${info.css}" data-idx="${idx}" onclick="toggleTimeline(this)">
+        <div class="request-card-header">
+          <div class="request-organ">${escHtml(req.recipientName || req.organName || 'Невідомий орган')}</div>
+          ${daysHtml}
+        </div>
+        <div class="request-subject">${escHtml(truncate(req.subject || req.description || '', 60))}</div>
+        <div class="request-meta">
+          <span class="request-date">${formatDate(req.createdAt)}</span>
+          <span class="request-status-badge ${info.badge}">${info.label}</span>
+        </div>
+        <div class="request-timeline" id="tl-${idx}">
+          ${steps}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function buildTimeline(req, status) {
+  const sentDate = formatDate(req.createdAt);
+  const deliveredDate = formatDate(req.deliveredAt || req.createdAt);
+  const pendingDate = formatDate(req.deliveredAt || req.createdAt);
+  const replyDate = formatDate(req.repliedAt || req.updatedAt);
+
+  const sentDone = true;
+  const deliveredDone = !!req.deliveredAt || req.status !== 'pending';
+  const pendingDone = req.status === 'replied' || req.status === 'refused';
+  const replyDone = req.status === 'replied';
+
+  let steps = [];
+  steps.push(`<div class="timeline-step ${sentDone ? 'done' : ''}"><span class="step-icon">📨</span> Відправлено — ${sentDate}</div>`);
+  steps.push(`<div class="timeline-step ${deliveredDone ? 'done' : 'current'}"><span class="step-icon">📬</span> Доставлено${deliveredDone ? ' — ' + deliveredDate : ''}</div>`);
+  steps.push(`<div class="timeline-step ${pendingDone ? 'done' : (deliveredDone ? 'current' : '')}"><span class="step-icon">⏳</span> Очікує</div>`);
+  steps.push(`<div class="timeline-step ${replyDone ? 'done' : ''}"><span class="step-icon">✅</span> Відповідь${replyDone ? ' — ' + replyDate : ''}</div>`);
+
+  if (req.status === 'refused') {
+    steps.push(`<div class="timeline-step done" style="color:var(--c-gray)"><span class="step-icon">⚪</span> Відмовлено — ${replyDate}</div>`);
+  }
+  if (req.status === 'bounced') {
+    steps.push(`<div class="timeline-step done" style="color:var(--c-brown)"><span class="step-icon">⚠️</span> Не доставлено</div>`);
+  }
+
+  return `<div class="timeline">${steps.join('')}</div>`;
+}
+
+function toggleTimeline(card) {
+  const tl = card.querySelector('.request-timeline');
+  if (!tl) return;
+  // Close all others first
+  document.querySelectorAll('.request-timeline.open').forEach(t => {
+    if (t !== tl) t.classList.remove('open');
+  });
+  tl.classList.toggle('open');
+}
+
+// Filter buttons
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    renderRequests();
+  });
+});
+
+/* ============================================
+   GENERATOR TAB
+   ============================================ */
+let generatedTemplate = '';
+
+async function generateRequest() {
+  const desc = document.getElementById('gen-description').value.trim();
+  if (!desc) {
+    showToast('Опишіть, яку інформацію хочете отримати');
+    return;
+  }
+
+  const organ = document.getElementById('gen-organ').value.trim();
+  const btn = document.getElementById('gen-btn');
+  const result = document.getElementById('gen-result');
+
+  btn.classList.add('loading');
+  btn.disabled = true;
+  result.classList.remove('visible');
+
+  try {
+    const data = await api('POST', '/api/generate-template', {
+      description: desc,
+      organName: organ || ''
+    });
+
+    generatedTemplate = data.template || '';
+    document.getElementById('gen-result-body').textContent = generatedTemplate;
+    document.getElementById('gen-ai-badge').textContent = data.aiUsed ? 'ШІ' : 'Шаблон';
+
+    // Show result with animation
+    requestAnimationFrame(() => {
+      result.classList.add('visible');
+      result.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+
+  } catch (e) {
+    console.error('Generate error:', e);
+    showToast('Помилка генерації. Спробуйте ще раз.');
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+function copyResult() {
+  if (!generatedTemplate) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(generatedTemplate).then(() => {
+      showToast('Скопійовано!');
+    }).catch(() => {
+      fallbackCopy(generatedTemplate);
+    });
+  } else {
+    fallbackCopy(generatedTemplate);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('Скопійовано!');
+  } catch (e) {
+    showToast('Не вдалося скопіювати');
+  }
+  document.body.removeChild(ta);
+}
+
+function editInBot() {
+  if (tg) {
+    // Send the generated template to the bot chat
+    tg.sendData(JSON.stringify({ action: 'edit_template', template: generatedTemplate }));
+    // Also try to close and switch to bot
+    if (tg.close) {
+      setTimeout(() => tg.close(), 300);
+    }
+  } else {
+    showToast('Доступно лише в Telegram');
+  }
+}
+
+/* Quick templates */
+const TEMPLATES = {
+  budget: {
+    description: 'Хочу отримати інформацію про витрати міського бюджету за останній рік, зокрема звіти про виконання бюджету та кошториси',
+    organ: ''
+  },
+  land: {
+    description: 'Прошу надати інформацію про відведення земельних ділянок у нашій громаді за останні 2 роки, включаючи рішення про передачу та оренду',
+    organ: ''
+  },
+  court: {
+    description: 'Запитую інформацію про судові рішення у справах щодо корупційних правопорушень посадових осіб органів місцевого самоврядування',
+    organ: ''
+  }
+};
+
+function useTemplate(key) {
+  const tmpl = TEMPLATES[key];
+  if (!tmpl) return;
+  document.getElementById('gen-description').value = tmpl.description;
+  if (tmpl.organ) {
+    document.getElementById('gen-organ').value = tmpl.organ;
+  } else {
+    document.getElementById('gen-organ').value = '';
+  }
+  // Scroll to top of generator and focus
+  document.getElementById('gen-description').focus();
+  document.getElementById('gen-description').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/* ============================================
+   PROFILE TAB
+   ============================================ */
+let profileLoaded = false;
+
+async function loadProfile() {
+  if (profileLoaded) return;
+
+  try {
+    const data = await api('GET', '/api/me');
+    const p = data.profile || {};
+    renderProfile(p);
+    profileLoaded = true;
+  } catch (e) {
+    console.error('Profile load error:', e);
+    // Fallback: use Telegram user data
+    if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+      const u = tg.initDataUnsafe.user;
+      renderProfile({
+        firstName: u.first_name || '',
+        lastName: u.last_name || '',
+        email: '',
+        postalAddress: ''
+      });
+    } else {
+      showToast('Не вдалося завантажити профіль');
+    }
+  }
+}
+
+function renderProfile(p) {
+  const firstName = p.firstName || '';
+  const lastName = p.lastName || '';
+  const fullName = [firstName, lastName].filter(Boolean).join(' ');
+
+  document.getElementById('profile-avatar').textContent = (firstName || '?')[0].toUpperCase();
+  document.getElementById('profile-name').textContent = fullName || 'Невідомий користувач';
+  document.getElementById('profile-fullname').textContent = fullName || '—';
+  document.getElementById('profile-email').textContent = p.email || 'Не вказано';
+  document.getElementById('profile-postal').textContent = p.postalAddress || 'Не вказано';
+}
+
+/* ============================================
+   UTILITY
+   ============================================ */
+function escHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function truncate(str, len) {
+  if (!str) return '';
+  return str.length > len ? str.substring(0, len) + '…' : str;
+}
+
+/* ============================================
+   INIT
+   ============================================ */
+(async function init() {
+  // Load overview on start
+  await loadOverview();
+})();
+</script>
+</body>
+</html>
+

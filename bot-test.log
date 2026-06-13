@@ -1,0 +1,16 @@
+2026/05/31 16:31:45 [INFO] module "start" registered
+2026/05/31 16:31:45 [INFO] module "help" registered
+2026/05/31 16:31:45 [INFO] module "cancel" registered
+2026/05/31 16:31:45 [INFO] module "profile" registered
+2026/05/31 16:31:45 [INFO] module "new-request" registered
+2026/05/31 16:31:45 [INFO] module "my-requests" registered
+2026/05/31 16:31:45 [INFO] module "directory" registered
+2026/05/31 16:31:45 [INFO] module "templates" registered
+2026/05/31 16:31:45 [INFO] module "hotlines" registered
+2026/05/31 16:31:45 [INFO] module "inbox" registered
+2026/05/31 16:31:45 [INFO] module "support" registered
+2026/05/31 16:31:45 [INFO] module "voice" registered
+2026/05/31 16:31:45 [INFO] module "copilot" registered
+2026/05/31 16:31:45 [INFO] module "backup" registered
+2026/05/31 16:31:45 Info-Bot-Go starting...
+2026/05/31 16:32:05 [IMAP] Scanning inbox (placeholder - add go-imap for full functionality)
