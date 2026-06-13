@@ -31,7 +31,9 @@ func ValidateInitData(initData, botToken string) (int64, bool) {
 	if hash == "" {
 		log.Printf("[AUTH-VALIDATE] no hash in params, keys: %v", func() []string {
 			keys := make([]string, 0, len(params))
-			for k := range params { keys = append(keys, k) }
+			for k := range params {
+				keys = append(keys, k)
+			}
 			return keys
 		}())
 		return 0, false
@@ -127,8 +129,8 @@ func extractUserID(jsonStr string) int64 {
 }
 
 func min(a, b int) int {
-	if a < b { return a }
+	if a < b {
+		return a
+	}
 	return b
 }
-
-

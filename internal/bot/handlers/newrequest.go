@@ -85,6 +85,19 @@ func (m *NewRequestModule) Register() {
 		_ = c.Edit("❌ Скасовано.")
 		return nil
 	}))
+
+	verifyBtn := tb.InlineButton{Unique: "nr_verify"}
+	m.bot.Handle(&verifyBtn, safeHandler("nr_verify", m.handleVerify))
+
+	vupdBtn := tb.InlineButton{Unique: "nr_vupd"}
+	m.bot.Handle(&vupdBtn, safeHandler("nr_vupd", m.handleVerifyUpdate))
+
+	keepBtn := tb.InlineButton{Unique: "nr_keep"}
+	m.bot.Handle(&keepBtn, safeHandler("nr_keep", func(c tb.Context) error {
+		_ = c.Respond()
+		_ = c.Edit("ℹ️ Залишено стару адресу.")
+		return m.showConfirm(c, false)
+	}))
 }
 
 func (m *NewRequestModule) startNew(c tb.Context) error {
@@ -233,6 +246,7 @@ func (m *NewRequestModule) showConfirm(c tb.Context, improved bool) error {
 	if m.deps.Gemini != nil && m.deps.Gemini.Available() && !improved {
 		rows = append(rows, []tb.InlineButton{{Unique: "nr_improve", Text: "✨ Покращити з AI"}})
 	}
+	rows = append(rows, []tb.InlineButton{{Unique: "nr_verify", Text: "🔍 Перевірити email"}})
 	if sess.Profile.Email != "" {
 		toggleText := "🔄 Перемкнути на: 📧 мій email"
 		if !sess.Draft.UseSharedMailbox {
@@ -343,6 +357,78 @@ func generateFOIRequestPDF(data email.RequestData) ([]byte, error) {
 	return os.ReadFile("/tmp/foi_request.pdf")
 }
 
+func (m *NewRequestModule) handleVerify(c tb.Context) error {
+	_ = c.Respond()
+	sess := c.Get("session").(*session.SessionData)
+
+	if m.deps.OSINT == nil {
+		return c.Send("⚠️ Фактчекінг вимкнено (немає API ключів).")
+	}
+
+	if sess.Draft.RecipientEmail == "" || sess.Draft.RecipientName == "" {
+		_ = c.Edit("⚠️ Спочатку заповніть чернетку.")
+		return nil
+	}
+
+	_ = c.Edit("🔍 *Перевіряю актуальність email...*", tb.ModeMarkdown)
+	_ = c.Bot().Notify(c.Sender(), tb.Typing)
+
+	result, err := m.deps.OSINT.FindEmail(sess.Draft.RecipientName)
+	if err != nil {
+		log.Printf("[VERIFY] OSINT error for %q: %v", sess.Draft.RecipientName, err)
+		_ = c.Edit(fmt.Sprintf("❌ Не вдалося виконати перевірку: %s", err))
+		return nil
+	}
+
+	if result.Email == "" {
+		kb := &tb.ReplyMarkup{}
+		kb.InlineKeyboard = [][]tb.InlineButton{
+			{{Unique: "nr_keep", Text: "⬅️ Назад до чернетки"}},
+		}
+		_ = c.Edit(fmt.Sprintf("ℹ️ Не вдалося знайти email для «%s» в інтернеті.\nПоточний адрес у чернетці: `%s`", sess.Draft.RecipientName, sess.Draft.RecipientEmail), kb, tb.ModeMarkdown)
+		return nil
+	}
+
+	sessDir := m.deps.Cfg.SessionDir
+	if sessDir == "" {
+		sessDir = ".sessions_go"
+	}
+
+	// Always save to learned cache (even if same — refreshes confidence)
+	m.deps.Directory.AddLearned(sessDir, result.AgencyName, result.Email)
+	sess.Draft.OSINTSuggestedName = result.AgencyName
+
+	if result.Email == sess.Draft.RecipientEmail {
+		kb := &tb.ReplyMarkup{}
+		kb.InlineKeyboard = [][]tb.InlineButton{
+			{{Unique: "nr_keep", Text: "⬅️ Назад до чернетки"}},
+		}
+		_ = c.Edit(fmt.Sprintf("✅ *Фактчекінг пройдено!*\n\nEmail `%s` є актуальним для «%s».", result.Email, result.AgencyName), kb, tb.ModeMarkdown)
+	} else {
+		kb := &tb.ReplyMarkup{}
+		kb.InlineKeyboard = [][]tb.InlineButton{
+			{{Unique: "nr_vupd", Text: "✅ Оновити на новий адрес", Data: result.Email}},
+			{{Unique: "nr_keep", Text: "❌ Залишити старий"}},
+		}
+		_ = c.Edit(fmt.Sprintf("⚠️ *Знайдено новий email!*\n\n🏛 *%s*\n📧 Було: `%s`\n📧 Стало: `%s`\n\nОновити адресу в чернетці?",
+			result.AgencyName, sess.Draft.RecipientEmail, result.Email), kb, tb.ModeMarkdown)
+	}
+	return nil
+}
+
+func (m *NewRequestModule) handleVerifyUpdate(c tb.Context) error {
+	_ = c.Respond()
+	_ = c.Edit("✅ Адресу оновлено!")
+	newEmail := c.Callback().Data
+	sess := c.Get("session").(*session.SessionData)
+
+	sess.Draft.RecipientEmail = newEmail
+	sess.Draft.RecipientName = sess.Draft.OSINTSuggestedName
+	saveSession(m.deps, c)
+
+	return m.showConfirm(c, false)
+}
+
 func (m *NewRequestModule) handleImprove(c tb.Context) error {
 	_ = c.Respond()
 	sess := c.Get("session").(*session.SessionData)
@@ -377,10 +463,6 @@ func addWorkingDays(start time.Time, days int) time.Time {
 		}
 	}
 	return d
-}
-
-func isValidEmail(s string) bool {
-	return strings.Contains(s, "@") && strings.Contains(s, ".")
 }
 
 func atoi(s string) int {

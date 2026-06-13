@@ -237,11 +237,11 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 
 	// Stats
 	stats := map[string]int{
-		"total":    len(cards),
-		"replied":  0,
-		"pending":  0,
-		"expired":  0,
-		"bounced":  0,
+		"total":   len(cards),
+		"replied": 0,
+		"pending": 0,
+		"expired": 0,
+		"bounced": 0,
 	}
 	for _, c := range cards {
 		stats[c.Status]++
@@ -375,4 +375,3 @@ func calcWorkingDaysDeadline(dateStr string) time.Time {
 	}
 	return current
 }
-

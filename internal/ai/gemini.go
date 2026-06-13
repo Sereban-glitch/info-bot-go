@@ -20,12 +20,12 @@ const (
 
 // Rotator manages multiple Gemini API keys with automatic rotation and cooldown.
 type Rotator struct {
-	keys           []keyState
-	cursor         int
-	model          string
-	fallbackModel  string
-	mu             sync.Mutex
-	client         *http.Client
+	keys          []keyState
+	cursor        int
+	model         string
+	fallbackModel string
+	mu            sync.Mutex
+	client        *http.Client
 }
 
 type keyState struct {
@@ -146,7 +146,7 @@ func (r *Rotator) geminiRequest(systemPrompt string, contents []interface{}, res
 	resp, err := r.client.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
 		r.markRateLimited(key)
-		return "", fmt.Errorf("Gemini API request failed: %w", err)
+		return "", fmt.Errorf("gemini API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -157,7 +157,7 @@ func (r *Rotator) geminiRequest(systemPrompt string, contents []interface{}, res
 			log.Printf("[AI] Primary model rate limited, trying fallback: %s", r.fallbackModel)
 			return r.geminiRequestWithModel(systemPrompt, contents, responseMIME, r.fallbackModel)
 		}
-		return "", fmt.Errorf("Gemini API rate limited (status %d)", resp.StatusCode)
+		return "", fmt.Errorf("gemini API rate limited (status %d)", resp.StatusCode)
 	}
 	if resp.StatusCode == 403 {
 		// 403 = permanently denied, blacklist this key immediately
@@ -176,12 +176,12 @@ func (r *Rotator) geminiRequest(systemPrompt string, contents []interface{}, res
 			return r.geminiRequestWithModel(systemPrompt, contents, responseMIME, r.fallbackModel)
 		}
 		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("Gemini API denied (403): %s", string(respBody))
+		return "", fmt.Errorf("gemini API denied (403): %s", string(respBody))
 	}
 	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)
 		r.markRateLimited(key)
-		return "", fmt.Errorf("Gemini API error %d: %s", resp.StatusCode, string(respBody))
+		return "", fmt.Errorf("gemini API error %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var result map[string]interface{}
@@ -244,7 +244,7 @@ func (r *Rotator) geminiRequestWithModel(systemPrompt string, contents []interfa
 	body, _ := json.Marshal(payload)
 	resp, err := r.client.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("Gemini fallback request failed: %w", err)
+		return "", fmt.Errorf("gemini fallback request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -252,9 +252,9 @@ func (r *Rotator) geminiRequestWithModel(systemPrompt string, contents []interfa
 		respBody, _ := io.ReadAll(resp.Body)
 		if resp.StatusCode == 429 || resp.StatusCode == 503 {
 			r.markRateLimited(key)
-			return "", fmt.Errorf("Gemini fallback rate limited (status %d)", resp.StatusCode)
+			return "", fmt.Errorf("gemini fallback rate limited (status %d)", resp.StatusCode)
 		}
-		return "", fmt.Errorf("Gemini fallback error %d: %s", resp.StatusCode, string(respBody))
+		return "", fmt.Errorf("gemini fallback error %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var result map[string]interface{}
@@ -510,7 +510,6 @@ func cleanJSON(text string) string {
 	return strings.TrimSpace(text)
 }
 
-
 // GenerateFromDescription generates a complete FOI request template from a short description,
 // with references to the Ukrainian Law on Access to Public Information (ЗУ № 2939-VI).
 func (r *Rotator) GenerateFromDescription(description string) (subject, body string, lawRefs []map[string]string, recipientHint string, err error) {
@@ -561,4 +560,3 @@ func (r *Rotator) GenerateFromDescription(description string) (subject, body str
 	}
 	return result.Subject, result.Body, result.LawRefs, result.RecipientHint, nil
 }
-

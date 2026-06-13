@@ -14,6 +14,7 @@ import (
 	"info-bot-go/internal/directory"
 	"info-bot-go/internal/email"
 	"info-bot-go/internal/imap"
+	"info-bot-go/internal/osint"
 	"info-bot-go/internal/ratelimiter"
 	"info-bot-go/internal/sentlog"
 	"info-bot-go/internal/session"
@@ -55,6 +56,11 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 		rotator = ai.NewRotator(cfg.GeminiAPIKeys, cfg.GeminiModel, cfg.GeminiFallbackModel)
 	}
 
+	var finder *osint.Finder
+	if len(cfg.GeminiAPIKeys) > 0 {
+		finder = osint.NewFinder(cfg.GeminiAPIKeys)
+	}
+
 	// Rate limiter: 3 requests per hour per user
 	rl := ratelimiter.New(3, 1*time.Hour)
 
@@ -83,6 +89,7 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 		Email:     email.NewSender(cfg),
 		Stats:     globalStats,
 		RateLimit: rl,
+		OSINT:     finder,
 	}
 
 	modules := handlers.AllModules(deps)
@@ -115,9 +122,9 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 	return botInst, nil
 }
 
-func (b *Bot) Telebot() *tb.Bot { return b.bot }
+func (b *Bot) Telebot() *tb.Bot     { return b.bot }
 func (b *Bot) Rotator() *ai.Rotator { return b.gemini }
-func (b *Bot) Start() { b.bot.Start() }
+func (b *Bot) Start()               { b.bot.Start() }
 
 func (b *Bot) Stop() {
 	if b.rateLim != nil {

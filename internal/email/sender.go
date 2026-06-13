@@ -109,22 +109,33 @@ func (s *Sender) SendWithAttachment(to, subject, body, replyTo, cc string, attac
 	msg.WriteString(buildCommonHeaders(from, to, replyTo, cc, messageID))
 	fmt.Fprintf(&msg, "Subject: %s\r\n", subject)
 	msg.WriteString("MIME-Version: 1.0\r\n")
-	msg.WriteString("Content-Type: multipart/mixed; boundary=\"" + boundary + "\"\r\n")
+	msg.WriteString("Content-Type: multipart/mixed; boundary=\"")
+	msg.WriteString(boundary)
+	msg.WriteString("\"\r\n")
 	msg.WriteString("\r\n")
 
 	// Text part
-	msg.WriteString("--" + boundary + "\r\n")
+	msg.WriteString("--")
+	msg.WriteString(boundary)
+	msg.WriteString("\r\n")
 	msg.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
 	msg.WriteString("Content-Transfer-Encoding: 8bit\r\n")
 	msg.WriteString("\r\n")
-	msg.WriteString(body + "\r\n")
+	msg.WriteString(body)
+	msg.WriteString("\r\n")
 	msg.WriteString("\r\n")
 
 	// Attachment part (PDF)
-	msg.WriteString("--" + boundary + "\r\n")
-	msg.WriteString("Content-Type: application/pdf; name=\"" + attachmentName + "\"\r\n")
+	msg.WriteString("--")
+	msg.WriteString(boundary)
+	msg.WriteString("\r\n")
+	msg.WriteString("Content-Type: application/pdf; name=\"")
+	msg.WriteString(attachmentName)
+	msg.WriteString("\"\r\n")
 	msg.WriteString("Content-Transfer-Encoding: base64\r\n")
-	msg.WriteString("Content-Disposition: attachment; filename=\"" + attachmentName + "\"\r\n")
+	msg.WriteString("Content-Disposition: attachment; filename=\"")
+	msg.WriteString(attachmentName)
+	msg.WriteString("\"\r\n")
 	msg.WriteString("\r\n")
 
 	// Base64 encode the attachment, 76 chars per line
@@ -134,10 +145,13 @@ func (s *Sender) SendWithAttachment(to, subject, body, replyTo, cc string, attac
 		if end > len(b64) {
 			end = len(b64)
 		}
-		msg.WriteString(b64[i:end] + "\r\n")
+		msg.WriteString(b64[i:end])
+		msg.WriteString("\r\n")
 	}
 
-	msg.WriteString("\r\n--" + boundary + "--\r\n")
+	msg.WriteString("\r\n--")
+	msg.WriteString(boundary)
+	msg.WriteString("--\r\n")
 
 	recipients := []string{to}
 	if cc != "" {
@@ -253,4 +267,3 @@ func BuildRequestDataFromSession(p session.Profile, d session.Draft, sharedMailb
 		SharedMailbox:    sharedMailbox,
 	}
 }
-

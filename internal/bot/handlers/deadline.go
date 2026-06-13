@@ -8,7 +8,6 @@ import (
 	tb "gopkg.in/telebot.v3"
 
 	"info-bot-go/internal/sentlog"
-	
 )
 
 // DeadlineModule tracks the 5-working-day deadline for government replies
@@ -176,6 +175,3 @@ func formatDate(t time.Time) string {
 
 // Ensure sentlog types are used
 var _ = sentlog.SentEntry{}
-
-
-

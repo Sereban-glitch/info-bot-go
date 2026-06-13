@@ -5,6 +5,7 @@
 *.so
 *.dylib
 info-bot-go
+info-bot
 test_mail
 
 # Test binary, built with `go test -c`

@@ -38,8 +38,8 @@ func (m *BugReportModule) handleBugReportBtn(c tb.Context) error {
 	saveSession(m.deps, c)
 
 	return c.Send(
-		"🐞 Опишіть проблему або надішліть скріншот/голосове повідомлення.\n\n"+
-			"Ви можете надіслати текст, фото, голосове або відео.\n"+
+		"🐞 Опишіть проблему або надішліть скріншот/голосове повідомлення.\n\n" +
+			"Ви можете надіслати текст, фото, голосове або відео.\n" +
 			"Для скасування: /cancel",
 	)
 }
@@ -143,4 +143,3 @@ func (m *BugReportModule) HandleText(c tb.Context, step string, text string) (bo
 	kb := MainMenuKeyboard(m.deps.Cfg, c.Sender().ID)
 	return true, c.Send("Дякуємо! Ваш звіт відправлено розробникам. 🙏", kb)
 }
-

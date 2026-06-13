@@ -70,14 +70,14 @@ func Load() (*Config, error) {
 		GmailUser:        os.Getenv("GMAIL_USER"),
 		GmailAppPassword: os.Getenv("GMAIL_APP_PASSWORD"),
 
-		GeminiModel:          getEnvOrDefault("GEMINI_MODEL", "gemini-1.5-flash"),
-		IMAPPollMinutes:      getEnvInt("IMAP_POLL_MINUTES", 60),
-		AdminID:              getEnvInt64("ADMIN_ID", 745130167),
-		ChannelID:            getEnvOrDefault("CHANNEL_ID", "@svobodnye_ludi_zp"),
-		SessionDir:           getEnvOrDefault("SESSION_DIR", ".sessions_go"),
-		MiniAppURL:           getEnvOrDefault("MINI_APP_URL", "https://mini-app-deployment.vercel.app/"),
-		GeminiFallbackModel:  getEnvOrDefault("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite"),
-		SharedMailbox:        getEnvOrDefault("SMTP_FROM_ADDR", getEnvOrDefault("GMAIL_USER", "publicinquiry69@gmail.com")),
+		GeminiModel:         getEnvOrDefault("GEMINI_MODEL", "gemini-1.5-flash"),
+		IMAPPollMinutes:     getEnvInt("IMAP_POLL_MINUTES", 60),
+		AdminID:             getEnvInt64("ADMIN_ID", 745130167),
+		ChannelID:           getEnvOrDefault("CHANNEL_ID", "@svobodnye_ludi_zp"),
+		SessionDir:          getEnvOrDefault("SESSION_DIR", ".sessions_go"),
+		MiniAppURL:          getEnvOrDefault("MINI_APP_URL", "https://mini-app-deployment.vercel.app/"),
+		GeminiFallbackModel: getEnvOrDefault("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite"),
+		SharedMailbox:       getEnvOrDefault("SMTP_FROM_ADDR", getEnvOrDefault("GMAIL_USER", "publicinquiry69@gmail.com")),
 	}
 
 	// If SMTP_USER is not set, fall back to GMAIL_USER
@@ -153,4 +153,3 @@ func getEnvInt64(key string, def int64) int64 {
 	}
 	return n
 }
-

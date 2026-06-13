@@ -33,7 +33,7 @@ var DefaultRecipients = []Recipient{
 	{ID: "amku", Name: "Антимонопольний комітет", Email: "public.info@amku.gov.ua", Category: "central"},
 	{ID: "rp", Name: "Рахункова палата", Email: "zapyt@rp.gov.ua", Category: "central"},
 	// LAW ENFORCEMENT
-	{ID: "gpu", Name: "Офіс Генпрокурора", Email: "publicinfo@gp.gov.ua", Category: "law"},
+	{ID: "gpu", Name: "Офіс Генпрокурора", Email: "office@gp.gov.ua", Category: "law"},
 	{ID: "mvs", Name: "МВС", Email: "vidkrytist@mvs.gov.ua", Category: "law"},
 	{ID: "nabu", Name: "НАБУ", Email: "publichna.info@nabu.gov.ua", Category: "law"},
 	{ID: "nazk", Name: "НАЗК", Email: "info@nazk.gov.ua", Category: "law"},
@@ -79,4 +79,3 @@ var DefaultRecipients = []Recipient{
 	{ID: "dnipro_admin", Name: "Дніпропетровська ОВА", Email: "zapit@dp.gov.ua", Category: "other"},
 	{ID: "kharkiv_admin", Name: "Харківська ОВА", Email: "zapit@kharkivoda.gov.ua", Category: "other"},
 }
-

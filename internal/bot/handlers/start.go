@@ -221,14 +221,4 @@ func MainMenuKeyboard(cfg *config.Config, userID int64) *tb.ReplyMarkup {
 	return kb
 }
 
-func inlineKB(rows ...[]tb.InlineButton) *tb.ReplyMarkup {
-	kb := &tb.ReplyMarkup{}
-	kb.InlineKeyboard = rows
-	return kb
-}
-
-func inlineBtn(text, unique, data string) tb.InlineButton {
-	return tb.InlineButton{Unique: unique, Text: text, Data: data}
-}
-
 var _ = stats.GlobalStats{}

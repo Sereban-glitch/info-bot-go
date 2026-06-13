@@ -228,4 +228,3 @@ func normalizeMessageID(id string) string {
 func nowISO() string {
 	return time.Now().Format(time.RFC3339)
 }
-

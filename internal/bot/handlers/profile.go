@@ -176,4 +176,3 @@ func (m *ProfileModule) showProfile(c tb.Context, sess *session.SessionData) err
 	kb := MainMenuKeyboard(m.deps.Cfg, c.Sender().ID)
 	return c.Send(text, kb, tb.ModeMarkdown)
 }
-

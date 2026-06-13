@@ -20,11 +20,12 @@ type Profile struct {
 
 // Draft holds a request being composed.
 type Draft struct {
-	RecipientName    string `json:"recipientName,omitempty"`
-	RecipientEmail   string `json:"recipientEmail,omitempty"`
-	Subject          string `json:"subject,omitempty"`
-	Body             string `json:"body,omitempty"`
-	UseSharedMailbox bool   `json:"useSharedMailbox,omitempty"`
+	RecipientName      string `json:"recipientName,omitempty"`
+	RecipientEmail     string `json:"recipientEmail,omitempty"`
+	Subject            string `json:"subject,omitempty"`
+	Body               string `json:"body,omitempty"`
+	UseSharedMailbox   bool   `json:"useSharedMailbox,omitempty"`
+	OSINTSuggestedName string `json:"osintSuggestedName,omitempty"`
 }
 
 // PRDraft holds copilot draft.

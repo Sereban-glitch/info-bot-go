@@ -46,6 +46,7 @@ func main() {
 	if sessDir == "" {
 		sessDir = ".sessions_go"
 	}
+	dir.LoadLearned(sessDir)
 	sessStore, err := session.NewFileStore(sessDir)
 	if err != nil {
 		log.Fatalf("session store init: %v", err)

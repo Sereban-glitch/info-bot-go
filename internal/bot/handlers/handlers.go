@@ -11,6 +11,7 @@ import (
 	"info-bot-go/internal/directory"
 	"info-bot-go/internal/email"
 	"info-bot-go/internal/imap"
+	"info-bot-go/internal/osint"
 	"info-bot-go/internal/ratelimiter"
 	"info-bot-go/internal/sentlog"
 	"info-bot-go/internal/session"
@@ -29,6 +30,7 @@ type Deps struct {
 	Email     *email.Sender
 	Stats     *stats.Stats
 	RateLimit *ratelimiter.RateLimiter
+	OSINT     *osint.Finder
 }
 
 type (
