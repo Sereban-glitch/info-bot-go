@@ -87,12 +87,10 @@ type LawRef struct {
 // Auth middleware
 // ---------------------------------------------------------------------------
 
-// authMiddleware validates Telegram WebApp initData and injects userID into context.
-// Primary: HMAC-SHA256 validation of initData.
-// Fallback: X-User-ID header from client-side Telegram WebApp SDK (tg.initDataUnsafe.user.id).
+// authMiddleware validates Telegram WebApp initData via HMAC-SHA256 and injects userID into context.
+// Only HMAC-validated requests are allowed; no fallback to X-User-ID for security.
 func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Try to get user ID from HMAC-validated initData first
 		initData := r.Header.Get("X-Init-Data")
 		if initData == "" {
 			initData = r.URL.Query().Get("init_data")
@@ -103,23 +101,6 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			if ok && userID > 0 {
 				r.Header.Set("X-User-ID", fmt.Sprintf("%d", userID))
 				log.Printf("[AUTH] HMAC OK: user_id=%d path=%s", userID, r.URL.Path)
-				next(w, r)
-				return
-			}
-			log.Printf("[AUTH] HMAC failed, trying fallback: path=%s data_len=%d", r.URL.Path, len(initData))
-		}
-
-		// Fallback: trust X-User-ID from client-side Telegram SDK
-		// This is safe because tg.initDataUnsafe is only available inside the Telegram app
-		userIDStr := r.Header.Get("X-User-ID")
-		if userIDStr == "" {
-			userIDStr = r.URL.Query().Get("user_id")
-		}
-		if userIDStr != "" {
-			var uid int64
-			if _, err := fmt.Sscanf(userIDStr, "%d", &uid); err == nil && uid > 0 {
-				r.Header.Set("X-User-ID", fmt.Sprintf("%d", uid))
-				log.Printf("[AUTH] Fallback OK: user_id=%d path=%s (HMAC unavailable)", uid, r.URL.Path)
 				next(w, r)
 				return
 			}

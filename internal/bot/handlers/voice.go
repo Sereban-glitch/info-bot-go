@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"errors"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"

@@ -373,6 +373,11 @@ func (w *Watcher) deliverReply(bot *tb.Bot, entry *sentlog.SentEntry, fromAddr, 
 
 // sendAttachment sends a file attachment to the user's chat.
 func (w *Watcher) sendAttachment(bot *tb.Bot, chatID int64, filePath string) {
+	defer func() {
+		if err := os.Remove(filePath); err != nil {
+			log.Printf("[IMAP] failed to remove attachment %s: %v", filePath, err)
+		}
+	}()
 	ext := strings.ToLower(filepath.Ext(filePath))
 
 	switch ext {
@@ -437,9 +442,20 @@ func (w *Watcher) markSeen(c *imapClient.Client, msg *imap.Message) {
 
 // sanitizeFilename removes potentially dangerous characters from filenames.
 func sanitizeFilename(name string) string {
-	name = strings.ReplaceAll(name, "/", "_")
-	name = strings.ReplaceAll(name, "\\", "_")
-	name = strings.ReplaceAll(name, "\x00", "")
+	name = filepath.Base(name)
+	// Keep only safe characters
+	var safe strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '_' || r == ' ' {
+			safe.WriteRune(r)
+		} else {
+			safe.WriteRune('_')
+		}
+	}
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." {
+		name = "attachment"
+	}
 	if len(name) > 200 {
 		ext := filepath.Ext(name)
 		name = name[:200-len(ext)] + ext
