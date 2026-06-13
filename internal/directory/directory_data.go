@@ -1,13 +1,13 @@
 package directory
 
 // DefaultRecipients is the built-in directory of Ukrainian government bodies.
-// Updated 2026-06-06: Verified FOI-specific email addresses from OSINT research.
+// Updated 2026-06-13 (OSINT-verified 9 dead addresses): Verified FOI-specific email addresses from OSINT research.
 var DefaultRecipients = []Recipient{
 	// CENTRAL
 	{ID: "kmu", Name: "Кабінет Міністрів України", Email: "pr-zapit@kmu.gov.ua", Category: "central"},
 	{ID: "rada", Name: "Верховна Рада України", Email: "infzapit@rada.gov.ua", Category: "central"},
 	{ID: "op", Name: "Офіс Президента України", Email: "req@apu.gov.ua", Category: "central"},
-	{ID: "minjust", Name: "Міністерство юстиції", Email: "themis@minjust.gov.ua", Category: "central"},
+	{ID: "minjust", Name: "Міністерство юстиції", Email: "callcentre@ca.minjust.gov.ua", Category: "central"},
 	{ID: "minfin", Name: "Міністерство фінансів", Email: "publishinfo@minfin.gov.ua", Category: "central"},
 	{ID: "minekonomiky", Name: "Мінекономіки", Email: "zapyt@me.gov.ua", Category: "central"},
 	{ID: "moz", Name: "Міністерство охорони здоров'я", Email: "info@moz.gov.ua", Category: "central"},
@@ -27,10 +27,10 @@ var DefaultRecipients = []Recipient{
 	{ID: "dps", Name: "Податкова служба", Email: "publicinfo_dps@tax.gov.ua", Category: "central"},
 	{ID: "customs", Name: "Митна служба", Email: "publishinfo@customs.gov.ua", Category: "central"},
 	{ID: "dss", Name: "Державна служба статистики", Email: "info@ukrstat.gov.ua", Category: "central"},
-	{ID: "dms", Name: "Міграційна служба", Email: "info@dms.gov.ua", Category: "central"},
+	{ID: "dms", Name: "Міграційна служба", Email: "hotline@dmsu.gov.ua", Category: "central"},
 	{ID: "dsns", Name: "ДСНС", Email: "info@dsns.gov.ua", Category: "central"},
 	{ID: "pension", Name: "Пенсійний фонд", Email: "info@pfu.gov.ua", Category: "central"},
-	{ID: "amku", Name: "Антимонопольний комітет", Email: "public.info@amku.gov.ua", Category: "central"},
+	{ID: "amku", Name: "Антимонопольний комітет", Email: "zvr@amcu.gov.ua", Category: "central"},
 	{ID: "rp", Name: "Рахункова палата", Email: "zapyt@rp.gov.ua", Category: "central"},
 	// LAW ENFORCEMENT
 	{ID: "gpu", Name: "Офіс Генпрокурора", Email: "office@gp.gov.ua", Category: "law"},
@@ -41,10 +41,10 @@ var DefaultRecipients = []Recipient{
 	{ID: "sbu", Name: "СБУ", Email: "callcenter@ssu.gov.ua", Category: "law"},
 	{ID: "dbr", Name: "ДБР", Email: "public@dbr.gov.ua", Category: "law"},
 	{ID: "sap", Name: "САП", Email: "info@sap.gov.ua", Category: "law"},
-	{ID: "vaks", Name: "ВАКС", Email: "info@vaks.court.gov.ua", Category: "law"},
+	{ID: "vaks", Name: "ВАКС", Email: "inbox@vaks.gov.ua", Category: "law"},
 	{ID: "esbu", Name: "ДБЕ", Email: "publicinfo@esbu.gov.ua", Category: "law"},
 	{ID: "dpsu", Name: "Прикордонна служба", Email: "publicinfo@dpsu.gov.ua", Category: "law"},
-	{ID: "dkr", Name: "Контрольно-ревізійне управління", Email: "info@dkru.gov.ua", Category: "law"},
+	{ID: "dkr", Name: "Державна аудиторська служба", Email: "post@dasu.gov.ua", Category: "law"},
 	// KYIV
 	{ID: "kmda", Name: "КМДА", Email: "publicinfo@kyivcity.gov.ua", Category: "kyiv"},
 	{ID: "kmr", Name: "Київська міська рада", Email: "zapit@kmr.gov.ua", Category: "kyiv"},
@@ -62,9 +62,9 @@ var DefaultRecipients = []Recipient{
 	{ID: "kmoas", Name: "Київський окружний адмінсуд", Email: "inbox@kmoas.court.gov.ua", Category: "courts"},
 	{ID: "supreme_court", Name: "Верховний Суд", Email: "inbox@supreme.court.gov.ua", Category: "courts"},
 	{ID: "kyiv_appeal_court", Name: "Апеляційний суд Києва", Email: "inbox@kia.court.gov.ua", Category: "courts"},
-	{ID: "cass_admin", Name: "Касаційний адмінсуд", Email: "inbox@kas.court.gov.ua", Category: "courts"},
-	{ID: "cass_civil", Name: "Касаційний цивільний суд", Email: "inbox@kasc.court.gov.ua", Category: "courts"},
-	{ID: "cass_crim", Name: "Касаційний кримінальний суд", Email: "inbox@kascr.court.gov.ua", Category: "courts"},
+	{ID: "cass_admin", Name: "Касаційний адмінсуд", Email: "kas@supreme.court.gov.ua", Category: "courts"},
+	{ID: "cass_civil", Name: "Касаційний цивільний суд", Email: "kcs@supreme.court.gov.ua", Category: "courts"},
+	{ID: "cass_crim", Name: "Касаційний кримінальний суд", Email: "kks@supreme.court.gov.ua", Category: "courts"},
 	{ID: "dsa", Name: "Державна судова адміністрація", Email: "vidkrytist@court.gov.ua", Category: "courts"},
 	// ZAPORIZHIA
 	{ID: "zoda", Name: "Запорізька ОВА", Email: "zapit@zoda.gov.ua", Category: "zaporizhia"},
