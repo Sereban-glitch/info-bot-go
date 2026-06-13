@@ -34,3 +34,7 @@ Thumbs.db
 # Sessions and temp
 .sessions_go/
 .attachments/
+
+# Backups
+*.bak_*
+.sessions_go.bak/

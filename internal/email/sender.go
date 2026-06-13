@@ -2,7 +2,9 @@ package email
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"fmt"
+	"mime"
 	"net/smtp"
 	"strings"
 	"time"
@@ -11,24 +13,17 @@ import (
 	"info-bot-go/internal/session"
 )
 
-// Sender handles email sending via SMTP.
-// Supports any SMTP server: Gmail, Resend, Brevo, self-hosted Postfix, etc.
-// Configuration is loaded from environment variables via config.Config.
 type Sender struct {
 	cfg *config.Config
 }
 
-// NewSender creates a new email sender.
 func NewSender(cfg *config.Config) *Sender {
 	return &Sender{cfg: cfg}
 }
 
-// generateMessageID creates a proper unique Message-ID per RFC 2822.
-// Uses the configured SMTP host domain for Message-ID alignment.
 func generateMessageID(smtpHost string) string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
-	// Extract domain from SMTP host (e.g., "smtp.gmail.com" -> "gmail.com")
 	domain := smtpHost
 	if parts := strings.Split(smtpHost, "."); len(parts) > 1 {
 		domain = strings.Join(parts[1:], ".")
@@ -36,7 +31,6 @@ func generateMessageID(smtpHost string) string {
 	return fmt.Sprintf("<%x.%d@%s>", b, time.Now().UnixNano(), domain)
 }
 
-// buildCommonHeaders builds headers shared between plain and attachment emails.
 func buildCommonHeaders(from, to, replyTo, cc, messageID string) string {
 	var msg strings.Builder
 	fmt.Fprintf(&msg, "From: %s\r\n", from)
@@ -57,7 +51,6 @@ func buildCommonHeaders(from, to, replyTo, cc, messageID string) string {
 	return msg.String()
 }
 
-// Send sends an information request email and returns the real Message-ID.
 func (s *Sender) Send(to, subject, body, replyTo, cc string) (string, error) {
 	if s.cfg.SMTPUser == "" || s.cfg.SMTPPassword == "" {
 		return "", fmt.Errorf("SMTP credentials not configured (SMTP_USER/SMTP_PASSWORD)")
@@ -68,10 +61,9 @@ func (s *Sender) Send(to, subject, body, replyTo, cc string) (string, error) {
 
 	auth := smtp.PlainAuth("", s.cfg.SMTPUser, s.cfg.SMTPPassword, s.cfg.SMTPHost)
 
-	// Build email message with proper headers
 	var msg strings.Builder
 	msg.WriteString(buildCommonHeaders(from, to, replyTo, cc, messageID))
-	fmt.Fprintf(&msg, "Subject: %s\r\n", subject)
+	fmt.Fprintf(&msg, "Subject: %s\r\n", mime.BEncoding.Encode("UTF-8", subject))
 	msg.WriteString("MIME-Version: 1.0\r\n")
 	msg.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
 	msg.WriteString("Content-Transfer-Encoding: 8bit\r\n")
@@ -91,7 +83,6 @@ func (s *Sender) Send(to, subject, body, replyTo, cc string) (string, error) {
 	return messageID, nil
 }
 
-// SendWithAttachment sends an email with a PDF attachment.
 func (s *Sender) SendWithAttachment(to, subject, body, replyTo, cc string, attachment []byte, attachmentName string) (string, error) {
 	if s.cfg.SMTPUser == "" || s.cfg.SMTPPassword == "" {
 		return "", fmt.Errorf("SMTP credentials not configured (SMTP_USER/SMTP_PASSWORD)")
@@ -102,19 +93,17 @@ func (s *Sender) SendWithAttachment(to, subject, body, replyTo, cc string, attac
 
 	auth := smtp.PlainAuth("", s.cfg.SMTPUser, s.cfg.SMTPPassword, s.cfg.SMTPHost)
 
-	// Build MIME multipart message
 	boundary := fmt.Sprintf("----=_Part_%x", time.Now().UnixNano())
 
 	var msg strings.Builder
 	msg.WriteString(buildCommonHeaders(from, to, replyTo, cc, messageID))
-	fmt.Fprintf(&msg, "Subject: %s\r\n", subject)
+	fmt.Fprintf(&msg, "Subject: %s\r\n", mime.BEncoding.Encode("UTF-8", subject))
 	msg.WriteString("MIME-Version: 1.0\r\n")
 	msg.WriteString("Content-Type: multipart/mixed; boundary=\"")
 	msg.WriteString(boundary)
 	msg.WriteString("\"\r\n")
 	msg.WriteString("\r\n")
 
-	// Text part
 	msg.WriteString("--")
 	msg.WriteString(boundary)
 	msg.WriteString("\r\n")
@@ -125,7 +114,6 @@ func (s *Sender) SendWithAttachment(to, subject, body, replyTo, cc string, attac
 	msg.WriteString("\r\n")
 	msg.WriteString("\r\n")
 
-	// Attachment part (PDF)
 	msg.WriteString("--")
 	msg.WriteString(boundary)
 	msg.WriteString("\r\n")
@@ -138,8 +126,7 @@ func (s *Sender) SendWithAttachment(to, subject, body, replyTo, cc string, attac
 	msg.WriteString("\"\r\n")
 	msg.WriteString("\r\n")
 
-	// Base64 encode the attachment, 76 chars per line
-	b64 := base64Encode(attachment)
+	b64 := base64.StdEncoding.EncodeToString(attachment)
 	for i := 0; i < len(b64); i += 76 {
 		end := i + 76
 		if end > len(b64) {
@@ -166,36 +153,6 @@ func (s *Sender) SendWithAttachment(to, subject, body, replyTo, cc string, attac
 	return messageID, nil
 }
 
-// base64Encode encodes bytes to base64 string.
-func base64Encode(data []byte) string {
-	const base64Table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	var result []byte
-	for i := 0; i < len(data); i += 3 {
-		var b0, b1, b2 byte
-		b0 = data[i]
-		if i+1 < len(data) {
-			b1 = data[i+1]
-		}
-		if i+2 < len(data) {
-			b2 = data[i+2]
-		}
-		result = append(result, base64Table[b0>>2])
-		result = append(result, base64Table[(b0&0x03)<<4|(b1>>4)])
-		if i+1 < len(data) {
-			result = append(result, base64Table[(b1&0x0f)<<2|(b2>>6)])
-		} else {
-			result = append(result, '=')
-		}
-		if i+2 < len(data) {
-			result = append(result, base64Table[b2&0x3f])
-		} else {
-			result = append(result, '=')
-		}
-	}
-	return string(result)
-}
-
-// BuildRequestText generates the full text of an information request letter.
 func BuildRequestText(data RequestData) string {
 	date := time.Now().Format("02.01.2006")
 
@@ -231,12 +188,10 @@ func BuildRequestText(data RequestData) string {
 %s`, data.RecipientName, data.FullName, contactLines, emailLine, data.Body, date, data.FullName)
 }
 
-// BuildSubject generates the email subject line.
 func BuildSubject(subject string) string {
 	return "Запит на публічну інформацію (ЗУ №2939-VI) — " + subject
 }
 
-// RequestData contains all data needed to build a request letter.
 type RequestData struct {
 	FullName         string
 	PostalAddress    string
@@ -248,7 +203,6 @@ type RequestData struct {
 	SharedMailbox    string
 }
 
-// BuildRequestDataFromSession builds RequestData from session state.
 func BuildRequestDataFromSession(p session.Profile, d session.Draft, sharedMailbox string) *RequestData {
 	useShared := d.UseSharedMailbox || p.Email == ""
 	email := p.Email

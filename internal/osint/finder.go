@@ -3,6 +3,7 @@ package osint
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +13,8 @@ import (
 	"sync"
 	"time"
 )
+
+var ErrOSINTCooldown = errors.New("all API keys in cooldown, try again later")
 
 var cascadeModels = []string{
 	"gemini-2.5-flash",
@@ -94,9 +97,9 @@ func (f *Finder) FindEmail(agencyName string) (*Result, error) {
 				earliest := f.earliestReady()
 				f.mu.Unlock()
 				if earliest.After(time.Now()) {
-					wait := time.Until(earliest) + time.Second
-					log.Printf("[OSINT] All keys in cooldown — waiting %.0fs for %s", wait.Seconds(), model)
-					time.Sleep(wait)
+					wait := time.Until(earliest)
+					log.Printf("[OSINT] All keys in cooldown for %s — retry in %.0fs", model, wait.Seconds())
+					return nil, fmt.Errorf("%w (%.0fs)", ErrOSINTCooldown, wait.Seconds())
 				}
 				continue
 			}

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -12,6 +13,7 @@ import (
 	tb "gopkg.in/telebot.v3"
 
 	"info-bot-go/internal/email"
+	"info-bot-go/internal/osint"
 	"info-bot-go/internal/sentlog"
 	"info-bot-go/internal/session"
 	"info-bot-go/internal/stats"
@@ -376,7 +378,11 @@ func (m *NewRequestModule) handleVerify(c tb.Context) error {
 	result, err := m.deps.OSINT.FindEmail(sess.Draft.RecipientName)
 	if err != nil {
 		log.Printf("[VERIFY] OSINT error for %q: %v", sess.Draft.RecipientName, err)
-		_ = c.Edit(fmt.Sprintf("❌ Не вдалося виконати перевірку: %s", err))
+		if errors.Is(err, osint.ErrOSINTCooldown) {
+			_ = c.Edit("⏳ Всі ліміти API вичерпано. Будь ласка, спробуйте за кілька хвилин.")
+		} else {
+			_ = c.Edit(fmt.Sprintf("❌ Не вдалося виконати перевірку: %s", err))
+		}
 		return nil
 	}
 
