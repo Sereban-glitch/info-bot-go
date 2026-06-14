@@ -11,6 +11,18 @@
 - **🎤 Голосовой ввод** — поддержка голосовых сообщений через Telegram
 - **🧪 Встроенное тестирование** — скрипт проверки SMTP/IMAP конвейера (`tools/test_mail`)
 
+## 📸 Скриншоты
+
+<details>
+<summary>Интерфейс бота Smart Zapyt</summary>
+<br>
+<div align="center">
+  <img src="assets/gov_request_bot.jpg" width="100%" alt="Smart Zapyt Bot Interface" />
+  <br>
+  <i>Интерфейс бота Smart Zapyt: от формирования запроса через Gemini AI до получения PDF-подтверждения и отслеживания статуса в режиме реального времени.</i>
+</div>
+</details>
+
 ## Быстрый старт
 
 ```bash
