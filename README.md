@@ -11,17 +11,27 @@
 - **🎤 Голосовой ввод** — поддержка голосовых сообщений через Telegram
 - **🧪 Встроенное тестирование** — скрипт проверки SMTP/IMAP конвейера (`tools/test_mail`)
 
-## 📸 Скриншоты
+- **📱 Telegram Mini App** — встроенный веб-дашборд на Vercel (https://vidkrito-vercel.vercel.app/) для аналитики и шаблонов.
+
+## 📸 Скриншоты и Интерфейс
+
+**Smart Zapyt** — комплексное решение для автоматизации юридических запросов к госорганам Украины. Интерфейс включает дашборд с аналитикой, AI-генератор документов на базе Gemini и систему отслеживания статусов в режиме реального времени.
 
 <details>
-<summary>Интерфейс бота Smart Zapyt</summary>
+<summary>Посмотреть галерею (Telegram Bot &amp; WebApp)</summary>
 <br>
 <div align="center">
-  <img src="assets/gov_request_bot.jpg" width="100%" alt="Smart Zapyt Bot Interface" />
-  <br>
-  <i>Интерфейс бота Smart Zapyt: от формирования запроса через Gemini AI до получения PDF-подтверждения и отслеживания статуса в режиме реального времени.</i>
+  <img src="assets/gov_request_bot.jpg" width="80%" alt="Интерфейс чат-бота" />
+  <br><i>Интерфейс чат-бота: уведомления и получение PDF-ответов</i><br><br>
+
+  <img src="assets/smart_zapyt_mini_1.jpg" width="80%" alt="Главный экран мини-аппа" />
+  <br><i>Главный экран мини-аппа: статистика пользователя и статусы</i><br><br>
+
+  <img src="assets/smart_zapyt_mini_2.jpg" width="80%" alt="Экран генератора запросов" />
+  <br><i>Экран генератора запросов: AI-инструмент и шаблоны</i><br>
 </div>
 </details>
+
 
 ## Быстрый старт
 
@@ -61,10 +71,11 @@ source .env && go run ./tools/test_mail/
 
 ```
 Telegram User → Telegram Bot API → info-bot-go (Go) → SMTP → Госорган
-                                                         ↓
-                                                     IMAP ← Ответ ← Госорган
-                                                         ↓
-                                                    Telegram User (уведомление)
+                    ↓                                         ↓
+              Mini App (Vercel)                            IMAP ← Ответ
+                    ↓                                         ↓
+              Telegram WebApp Dashboard                 Telegram User
+              vidkrito-vercel.vercel.app              (уведомление)
 ```
 
 ## Технологии
