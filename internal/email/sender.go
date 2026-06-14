@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"mime"
+	"mime/quotedprintable"
 	"net/smtp"
 	"strings"
 	"time"
@@ -66,9 +67,12 @@ func (s *Sender) Send(to, subject, body, replyTo, cc string) (string, error) {
 	fmt.Fprintf(&msg, "Subject: %s\r\n", mime.BEncoding.Encode("UTF-8", subject))
 	msg.WriteString("MIME-Version: 1.0\r\n")
 	msg.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
-	msg.WriteString("Content-Transfer-Encoding: 8bit\r\n")
+	msg.WriteString("Content-Transfer-Encoding: quoted-printable\r\n")
 	msg.WriteString("\r\n")
-	msg.WriteString(body)
+
+	qpw := quotedprintable.NewWriter(&msg)
+	qpw.Write([]byte(body))
+	qpw.Close()
 
 	recipients := []string{to}
 	if cc != "" {
@@ -108,9 +112,13 @@ func (s *Sender) SendWithAttachment(to, subject, body, replyTo, cc string, attac
 	msg.WriteString(boundary)
 	msg.WriteString("\r\n")
 	msg.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
-	msg.WriteString("Content-Transfer-Encoding: 8bit\r\n")
+	msg.WriteString("Content-Transfer-Encoding: quoted-printable\r\n")
 	msg.WriteString("\r\n")
-	msg.WriteString(body)
+
+	qpw := quotedprintable.NewWriter(&msg)
+	qpw.Write([]byte(body))
+	qpw.Close()
+
 	msg.WriteString("\r\n")
 	msg.WriteString("\r\n")
 

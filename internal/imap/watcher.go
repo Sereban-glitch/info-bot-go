@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-imap"
@@ -32,6 +33,7 @@ type Watcher struct {
 	lastScan  time.Time
 	lastCount int
 	attachDir string
+	mu        sync.Mutex
 }
 
 // NewWatcher creates a new IMAP watcher.
@@ -106,6 +108,11 @@ func (w *Watcher) TriggerScan() (processed, matched int, err error) {
 }
 
 func (w *Watcher) scanOnce(bot *tb.Bot) {
+	if !w.mu.TryLock() {
+		log.Printf("[IMAP] previous scan still in progress, skipping")
+		return
+	}
+	defer w.mu.Unlock()
 	w.lastScan = time.Now()
 
 	c, err := imapClient.DialTLS(fmt.Sprintf("%s:%d", w.imapHost, w.imapPort), nil)
