@@ -49,9 +49,9 @@ func (s *Server) Start(addr string) error {
 	// API routes
 	mux.HandleFunc("/api/me", corsMiddleware(s.authMiddleware(s.handleMe)))
 	mux.HandleFunc("/api/requests", corsMiddleware(s.authMiddleware(s.handleRequests)))
-	mux.HandleFunc("/api/templates", corsMiddleware(s.handleTemplates))
-	mux.HandleFunc("/api/directory", corsMiddleware(s.handleDirectory))
-	mux.HandleFunc("/api/stats", corsMiddleware(s.handleStats))
+	mux.HandleFunc("/api/templates", corsMiddleware(s.authMiddleware(s.handleTemplates)))
+	mux.HandleFunc("/api/directory", corsMiddleware(s.authMiddleware(s.handleDirectory)))
+	mux.HandleFunc("/api/stats", corsMiddleware(s.authMiddleware(s.handleStats)))
 	mux.HandleFunc("/api/generate-template", corsMiddleware(s.authMiddleware(s.handleGenerateTemplate)))
 
 	// Static files (mini-app HTML)
