@@ -72,10 +72,12 @@ var DefaultRecipients = []Recipient{
 	{ID: "zp_oblrada", Name: "Запорізька обласна рада", Email: "info@zor.gov.ua", Category: "zaporizhia"},
 	{ID: "zp_police", Name: "Поліція Запоріжжя", Email: "info@zp.police.gov.ua", Category: "zaporizhia"},
 	{ID: "zp_proc", Name: "Прокуратура Запоріжжя", Email: "public@zap.gp.gov.ua", Category: "zaporizhia"},
-	{ID: "zp_dbr", Name: "ТУ ДБР у Мелітополі", Email: "info@mel.dbr.gov.ua", Category: "zaporizhia"},
 	// OTHER REGIONS
 	{ID: "lviv_admin", Name: "Львівська ОВА", Email: "zapit@loda.gov.ua", Category: "other"},
 	{ID: "lviv_rada", Name: "Львівська міська рада", Email: "zaput@city-adm.lviv.ua", Category: "other"},
 	{ID: "dnipro_admin", Name: "Дніпропетровська ОВА", Email: "zapit@dp.gov.ua", Category: "other"},
 	{ID: "kharkiv_admin", Name: "Харківська ОВА", Email: "zapit@kharkivoda.gov.ua", Category: "other"},
+	{ID: "lviv_miskrada", Name: "Львівська міська рада (швидкий тест)", Email: "zaput@lmr.gov.ua", Category: "other"},
+	{ID: "kharkiv_miskrada", Name: "Харківська міська рада (швидкий тест)", Email: "vmr@khm.gov.ua", Category: "other"},
+	{ID: "minregion_zapit", Name: "Мінрегіон запити (швидкий тест)", Email: "zapit@minregion.gov.ua", Category: "central"},
 }
