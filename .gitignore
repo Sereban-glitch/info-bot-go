@@ -38,3 +38,6 @@ Thumbs.db
 # Backups
 *.bak_*
 .sessions_go.bak/
+info-bot.bak*
+tools/test_osint/test_osint
+tools/verify_directory/verify_directory
