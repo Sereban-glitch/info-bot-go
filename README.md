@@ -1,5 +1,56 @@
 # info-bot-go
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Go Version](https://img.shields.io/badge/Go-1.19+-00ADD8?logo=go&logoColor=white)](https://golang.org)
+[![Telegram](https://img.shields.io/badge/Telegram-Bot-26A5E4?logo=telegram&logoColor=white)](https://t.me/Infozaputbot)
+[![Release](https://img.shields.io/github/v/release/Sereban-glitch/info-bot-go?display_name=tag)](https://github.com/Sereban-glitch/info-bot-go/releases)
+
+**Freedom of Information (FOI) Bot** — Telegram-бот для отправки официальных запросов в государственные органы Украины через электронную почту.
+
+## 🚀 Быстрый старт
+
+### Вариант 1: Скачать готовый бинарник (рекомендуется)
+
+```bash
+# Linux amd64
+wget https://github.com/Sereban-glitch/info-bot-go/releases/latest/download/info-bot-linux-amd64
+chmod +x info-bot-linux-amd64
+./info-bot-linux-amd64
+```
+
+### Вариант 2: Docker
+
+```bash
+docker run -d \
+  --name info-bot \
+  -p 8081:8081 \
+  --env-file .env \
+  ghcr.io/sereban-glitch/info-bot-go:latest
+```
+
+### Вариант 3: Сборка из исходников
+
+```bash
+git clone https://github.com/Sereban-glitch/info-bot-go.git
+cd info-bot-go
+cp .env.example .env  # заполнить TELEGRAM_BOT_TOKEN, GEMINI_API_KEY, и т.д.
+go build -o info-bot .
+./info-bot
+```
+
+### Переменные окружения
+
+См. [`.env.example`](.env.example) для полного списка. Основные:
+
+| Переменная | Описание |
+|-----------|----------|
+| `TELEGRAM_BOT_TOKEN` | Токен бота от @BotFather |
+| `GEMINI_API_KEY` | API ключ Google Gemini |
+| `GMAIL_USER` | Gmail для отправки запросов |
+| `GMAIL_APP_PASSWORD` | Пароль приложения Gmail |
+
+---
+
 **Freedom of Information (FOI) Bot** — Telegram-бот для отправки официальных запросов в государственные органы Украины через электронную почту.
 
 ## 💡 Концепция: Экономия вашего времени
