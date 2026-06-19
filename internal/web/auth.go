@@ -21,10 +21,16 @@ func ValidateInitData(initData, botToken string) (int64, bool) {
 		return 0, false
 	}
 
+	// Parse initData — url.ParseQuery handles URL decoding
 	params, err := url.ParseQuery(initData)
 	if err != nil {
 		log.Printf("[AUTH-VALIDATE] parseQuery error: %v", err)
 		return 0, false
+	}
+
+	// Debug: log what we received (for troubleshooting)
+	if userVal := params.Get("user"); userVal != "" {
+		log.Printf("[AUTH-VALIDATE] user field length: %d, starts with: %s", len(userVal), userVal[:min(20, len(userVal))])
 	}
 
 	hash := params.Get("hash")
@@ -68,9 +74,12 @@ func ValidateInitData(initData, botToken string) (int64, bool) {
 		}
 		sb.WriteString(k)
 		sb.WriteByte('=')
+		// Use the raw value from params — url.ParseQuery already decoded it
+		// Telegram signs the decoded form, so this should match
 		sb.WriteString(params.Get(k))
 	}
 	dataCheckString := sb.String()
+	log.Printf("[AUTH-VALIDATE] data-check-string length: %d", len(dataCheckString))
 
 	secretKeyMac := hmac.New(sha256.New, []byte(botToken))
 	secretKeyMac.Write([]byte("WebAppData"))
