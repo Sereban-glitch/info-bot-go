@@ -172,7 +172,29 @@ func (m *ProfileModule) showProfile(c tb.Context, sess *session.SessionData) err
 		addr = "не вказано"
 	}
 
-	text := fmt.Sprintf("✅ *Профіль збережено!*\n\n👤 Ім'я: %s\n📧 Email: %s\n📍 Адреса: %s\n\nТеперь можна: /new", name, email, addr)
-	kb := MainMenuKeyboard(m.deps.Cfg, c.Sender().ID)
+	text := fmt.Sprintf("✅ *Профіль*\n\n👤 Ім\'я: %s\n📧 Email: %s\n📍 Адреса: %s", name, email, addr)
+
+	// Edit button
+	editBtn := &tb.InlineButton{
+		Unique: "pedit",
+		Text:   "✏️ Редагувати",
+	}
+	m.bot.Handle(editBtn, safeHandler("profile_edit", m.handleEdit))
+
+	kb := &tb.ReplyMarkup{}
+	kb.InlineKeyboard = [][]tb.InlineButton{{*editBtn}}
 	return c.Send(text, kb, tb.ModeMarkdown)
+}
+
+func (m *ProfileModule) handleEdit(c tb.Context) error {
+	_ = c.Respond()
+	sess := c.Get("session").(*session.SessionData)
+	// Reset profile to allow re-entry
+	sess.Profile.FirstName = ""
+	sess.Profile.LastName = ""
+	sess.Profile.MiddleName = ""
+	sess.Profile.PostalAddress = ""
+	sess.Profile.Email = ""
+	saveSession(m.deps, c)
+	return m.askNextField(c, sess)
 }
