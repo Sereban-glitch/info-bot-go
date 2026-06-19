@@ -96,18 +96,32 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		var userID int64
 		var ok bool
 		if initData != "" {
-			// Header: raw string, needs to be parsed
 			userID, ok = ValidateInitData(initData, s.cfg.BotToken)
 		} else if queryData := r.URL.Query().Get("init_data"); queryData != "" {
-			// Query param: already URL-decoded by net/http, pass as-is
-			// ValidateInitData will parse it correctly since it's already decoded once
 			userID, ok = ValidateInitData(queryData, s.cfg.BotToken)
 		}
 
 		if ok && userID > 0 {
-			if ok && userID > 0 {
-				r.Header.Set("X-User-ID", fmt.Sprintf("%d", userID))
-				log.Printf("[AUTH] HMAC OK: user_id=%d path=%s", userID, r.URL.Path)
+			r.Header.Set("X-User-ID", fmt.Sprintf("%d", userID))
+			log.Printf("[AUTH] HMAC OK: user_id=%d path=%s", userID, r.URL.Path)
+			next(w, r)
+			return
+		}
+
+		// Fallback: trust user_id query param (Mini App SDK sends it)
+		if uidStr := r.URL.Query().Get("user_id"); uidStr != "" {
+			if uid, err := strconv.ParseInt(uidStr, 10, 64); err == nil && uid > 0 {
+				r.Header.Set("X-User-ID", fmt.Sprintf("%d", uid))
+				log.Printf("[AUTH] FALLBACK user_id=%d path=%s", uid, r.URL.Path)
+				next(w, r)
+				return
+			}
+		}
+
+		// Fallback: trust X-User-ID header (Mini App SDK sends it)
+		if uidStr := r.Header.Get("X-User-ID"); uidStr != "" {
+			if uid, err := strconv.ParseInt(uidStr, 10, 64); err == nil && uid > 0 {
+				log.Printf("[AUTH] FALLBACK X-User-ID=%d path=%s", uid, r.URL.Path)
 				next(w, r)
 				return
 			}
