@@ -839,7 +839,11 @@ small { font-size: 13px; color: var(--tg-hint); }
    ============================================ */
 // API_BASE: empty = same origin (served by Go bot directly)
 // Set window.__API_BASE__ before this script or change below for Vercel deployment
-const API_BASE = window.location.pathname.startsWith('/prozoro') ? '/prozoro' : (window.__API_BASE__ || '');
+// Auto-detect: if we're on Vercel (not our server), point API to our server
+    if (window.location.hostname.includes('vercel.app') && !window.__API_BASE__) {
+      window.__API_BASE__ = 'http://34.46.98.209';
+    }
+    const API_BASE = window.location.pathname.startsWith('/prozoro') ? '/prozoro' : (window.__API_BASE__ || '');
 
 /* ============================================
    TELEGRAM WEBAPP INIT
