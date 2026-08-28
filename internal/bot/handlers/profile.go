@@ -120,8 +120,15 @@ func (m *ProfileModule) handleSkip(c tb.Context) error {
 }
 
 func (m *ProfileModule) askNextField(c tb.Context, sess *session.SessionData) error {
-	kb := &tb.ReplyMarkup{}
-	kb.InlineKeyboard = [][]tb.InlineButton{{*m.skipBtn}}
+	// Защита от nil: если модуль создан без Register() (например, через
+	// AllModules вне bot.New), skipBtn может быть nil — раньше это падало
+	// panic'ом и убивало весь процесс. Без кнопки клавиатура не добавляется.
+	sendOpts := make([]interface{}, 0, 1)
+	if m.skipBtn != nil {
+		kb := &tb.ReplyMarkup{}
+		kb.InlineKeyboard = [][]tb.InlineButton{{*m.skipBtn}}
+		sendOpts = append(sendOpts, kb)
+	}
 
 	switch {
 	case sess.Profile.FirstName == "":
@@ -132,22 +139,22 @@ func (m *ProfileModule) askNextField(c tb.Context, sess *session.SessionData) er
 	case sess.Profile.LastName == "":
 		sess.Step = "profile:lastName"
 		saveSession(m.deps, c)
-		return c.Send("2️⃣ Введіть ваше прізвище (або пропустіть):", kb)
+		return c.Send("2️⃣ Введіть ваше прізвище (або пропустіть):", sendOpts...)
 
 	case sess.Profile.MiddleName == "":
 		sess.Step = "profile:middleName"
 		saveSession(m.deps, c)
-		return c.Send("3️⃣ По-батькові (не обов'язково):", kb)
+		return c.Send("3️⃣ По-батькові (не обов'язково):", sendOpts...)
 
 	case sess.Profile.PostalAddress == "":
 		sess.Step = "profile:postalAddress"
 		saveSession(m.deps, c)
-		return c.Send("4️⃣ Поштова адреса (не обов'язково):", kb)
+		return c.Send("4️⃣ Поштова адреса (не обов'язково):", sendOpts...)
 
 	case sess.Profile.Email == "":
 		sess.Step = "profile:email"
 		saveSession(m.deps, c)
-		return c.Send("5️⃣ Email (не обов'язково — відповідь і так буде на публічній сторінці запиту та в чаті):", kb)
+		return c.Send("5️⃣ Email (не обов'язково — відповідь і так буде на публічній сторінці запиту та в чаті):", sendOpts...)
 
 	default:
 		return m.showProfile(c, sess)
