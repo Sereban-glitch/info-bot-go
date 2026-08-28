@@ -147,7 +147,7 @@ func (m *ProfileModule) askNextField(c tb.Context, sess *session.SessionData) er
 	case sess.Profile.Email == "":
 		sess.Step = "profile:email"
 		saveSession(m.deps, c)
-		return c.Send("5️⃣ Ваш email для відповідей (або пропустіть — використаємо спільну пошту):", kb)
+		return c.Send("5️⃣ Email (не обов'язково — відповідь і так буде на публічній сторінці запиту та в чаті):", kb)
 
 	default:
 		return m.showProfile(c, sess)
@@ -165,14 +165,14 @@ func (m *ProfileModule) showProfile(c tb.Context, sess *session.SessionData) err
 	}
 	email := sess.Profile.Email
 	if email == "" {
-		email = m.deps.Cfg.SharedMailbox + " (спільна пошта)"
+		email = "— (не потрібно: відповідь на публічній сторінці запиту)"
 	}
 	addr := sess.Profile.PostalAddress
 	if addr == "" {
 		addr = "не вказано"
 	}
 
-	text := fmt.Sprintf("✅ *Профіль*\n\n👤 Ім\'я: %s\n📧 Email: %s\n📍 Адреса: %s", name, email, addr)
+	text := fmt.Sprintf("✅ *Профіль*\n\n👤 Ім'я: %s\n📧 Email: %s\n📍 Адреса: %s", name, email, addr)
 
 	// Edit button
 	editBtn := &tb.InlineButton{

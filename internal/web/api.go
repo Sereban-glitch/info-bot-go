@@ -3,13 +3,14 @@ package web
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"info-bot-go/internal/directory"
+	"info-bot-go/internal/dostup"
 	"info-bot-go/internal/sentlog"
 	"info-bot-go/internal/session"
 )
@@ -44,6 +45,11 @@ type RequestItem struct {
 	Status          string `json:"status"`
 	ReplyReceivedAt string `json:"replyReceivedAt"`
 	DaysLeft        int    `json:"daysLeft"`
+	Channel         string `json:"channel,omitempty"`
+	URL             string `json:"url,omitempty"`
+	LastStatus      string `json:"lastStatus,omitempty"`
+	ResponseExcerpt string `json:"responseExcerpt,omitempty"`
+	AckAt           string `json:"ackAt,omitempty"` // получено только авто-подтверждение — ответа по существу ещё нет
 }
 
 type StatsResponse struct {
@@ -217,6 +223,11 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 			Status:          status,
 			ReplyReceivedAt: e.ReplyReceivedAt,
 			DaysLeft:        daysLeft,
+			Channel:         e.Channel,
+			URL:             e.URL,
+			LastStatus:      e.LastStatus,
+			ResponseExcerpt: e.ResponseExcerpt,
+			AckAt:           e.AckAt,
 		})
 	}
 
@@ -423,4 +434,96 @@ var builtInTemplates = []struct {
 	{"tcc", "👮‍♂️ Скарги на ТЦК", "Результати перевірок діяльності ТЦК", "Прошу надати інформацію про кількість зареєстрованих скарг на дії представників ТЦК та СП у регіоні за останній квартал та результати проведених службових перевірок за цими фактами."},
 	{"salaries", "👔 Зарплати посадовців", "Виплати керівному складу органу", "Прошу надати помісячну деталізацію виплат (оклад, премії, надбавки) керівнику органу та його заступникам за поточний рік. Інформація є публічною згідно ст. 6 Закону № 2939-VI."},
 	{"budget", "💰 Витрати на ремонти", "Використання бюджету на ремонтні роботи", "Прошу надати перелік договорів на ремонтні роботи, укладених вашим органом за останні 6 місяців, разом із актами виконаних робіт та копіями платіжних доручень."},
+}
+
+// ---------------------------------------------------------------------------
+// Рейтинги органов и поиск по публичным запросам портала
+// ---------------------------------------------------------------------------
+
+// BodyStatsResponse — рейтинг органа для мини-приложения.
+type BodyStatsResponse struct {
+	Available  bool `json:"available"`
+	Requests   int  `json:"requests"`
+	Overdue    int  `json:"overdue"`
+	OverduePct int  `json:"overduePct"`
+	Successful int  `json:"successful"`
+}
+
+// handleBodyStats — GET /api/body-stats?name=<орган>: рейтинг ответов органа.
+func (s *Server) handleBodyStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{OK: false, Err: "method not allowed"})
+		return
+	}
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, APIResponse{OK: false, Err: "name is required"})
+		return
+	}
+	if s.dostup == nil || s.catalog == nil {
+		writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: BodyStatsResponse{Available: false}})
+		return
+	}
+
+	// Слаг органа: привязка → каталог → локальный поиск
+	slug := ""
+	if b, ok := s.catalog.LookupBinding(name); ok {
+		slug = b.Slug
+	} else if hits := s.catalog.SearchLocal(name, 1); len(hits) > 0 {
+		slug = hits[0].Slug
+	}
+	if slug == "" {
+		writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: BodyStatsResponse{Available: false}})
+		return
+	}
+
+	st, err := s.dostup.BodyStatsCached(slug, true)
+	if err != nil || st == nil {
+		writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: BodyStatsResponse{Available: false}})
+		return
+	}
+	writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: BodyStatsResponse{
+		Available:  true,
+		Requests:   st.Requests,
+		Overdue:    st.Overdue,
+		OverduePct: st.OverduePct(),
+		Successful: st.Successful,
+	}})
+}
+
+// handleSearchRequests — GET /api/search-requests?q=<запит>: публичный поиск.
+func (s *Server) handleSearchRequests(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{OK: false, Err: "method not allowed"})
+		return
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		writeJSON(w, http.StatusBadRequest, APIResponse{OK: false, Err: "q is required"})
+		return
+	}
+	searchURL := dostup.SearchURL(q)
+	if s.dostup == nil {
+		writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: map[string]interface{}{
+			"items":     []dostup.PublicRequest{},
+			"searchURL": searchURL,
+		}})
+		return
+	}
+	items, err := s.dostup.SearchRequests(q)
+	if err != nil {
+		log.Printf("[WEB] search-requests %q: %v", q, err)
+		writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: map[string]interface{}{
+			"items":     []dostup.PublicRequest{},
+			"searchURL": searchURL,
+		}})
+		return
+	}
+	if len(items) > 10 {
+		items = items[:10]
+	}
+	writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: map[string]interface{}{
+		"items":     items,
+		"searchURL": searchURL,
+	}})
 }

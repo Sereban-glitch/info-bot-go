@@ -1,0 +1,33 @@
+{
+  "cookies": [
+    {
+      "Name": "locale",
+      "Value": "uk",
+      "Path": "",
+      "Domain": "",
+      "Expires": "0001-01-01T00:00:00Z",
+      "RawExpires": "",
+      "MaxAge": 0,
+      "Secure": false,
+      "HttpOnly": false,
+      "SameSite": 0,
+      "Raw": "",
+      "Unparsed": null
+    },
+    {
+      "Name": "_wdtk_cookie_session",
+      "Value": "TM1sjG%2FVzDzBiNtJGFXbDmpsivu%2BwdkVQ0EUH3VKnp6tIcow3vJmVpN8ZPisPo3n9NMSloUpZeuY4TlG3zmHzMsjikGKsf%2FC%2BD4al8C9dX3RG4ptDZWNtFv36LN3M4O2roKyaISzBX%2FUP46YjPamE5F9RElU0y6Hm%2B8csDPI9yxFi8bpfQEDtTBQ9MT7%2FFxsnsSV%2FJDT5olnmgJBTX4OiXbVSR%2FLgJ%2BVyh109IIiVM1Myxu9PCv2VYenaCQWWyUTSi%2FnSTVn51M3V3zC%2B4aaO6sLaQrWXZMikyQUG513uYOkmzKpe61gpiKcQL2d1taOUpCzsqb7uLlU0uRZrJ6m8ojNiXj%2BePZVXyaFHa%2FHhW5hKauJwPThNB5J1Un2vvFtMUpicudG6RMoMfmogahg%2Fn7h%2B45qTisNMEyYUpz1XVMrLyBiuCzCaylQNct94f3fW%2FqJDpEsQaZVvRspj32n09uwydr3QIrfBF98%2BNO6VfbXWzxxwoEfLE8iA9VOHRb72ujRXrqH%2FzGjctLcCexOOmggvg%2BhPEf%2BBLlR2U8k%2BUd%2FXED%2Bd3Q%3D--sak8RgjzGEKPEOk0--%2B%2BPt1aHoVKnEBATteEy%2Fig%3D%3D",
+      "Path": "",
+      "Domain": "",
+      "Expires": "0001-01-01T00:00:00Z",
+      "RawExpires": "",
+      "MaxAge": 0,
+      "Secure": false,
+      "HttpOnly": false,
+      "SameSite": 0,
+      "Raw": "",
+      "Unparsed": null
+    }
+  ],
+  "email": "akimovcasehw3jf3aw@emalupe.com"
+}

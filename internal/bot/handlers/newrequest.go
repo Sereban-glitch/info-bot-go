@@ -91,6 +91,12 @@ func (m *NewRequestModule) Register() {
 	verifyBtn := tb.InlineButton{Unique: "nr_verify"}
 	m.bot.Handle(&verifyBtn, safeHandler("nr_verify", m.handleVerify))
 
+	dostupBtn := tb.InlineButton{Unique: "nr_dostup"}
+	m.bot.Handle(&dostupBtn, safeHandler("nr_dostup", func(c tb.Context) error {
+		dm := NewDostupModule(m.deps)
+		return dm.StartDostupFlow(c)
+	}))
+
 	vupdBtn := tb.InlineButton{Unique: "nr_vupd"}
 	m.bot.Handle(&vupdBtn, safeHandler("nr_vupd", m.handleVerifyUpdate))
 
@@ -179,8 +185,10 @@ func (m *NewRequestModule) handleRecipient(c tb.Context) error {
 	sess.Draft.RecipientEmail = r.Email
 	sess.Step = "new:ask_subject"
 	saveSession(m.deps, c)
-	_ = c.Edit(fmt.Sprintf("✅ Обрано: %s\n📧 %s", r.Name, r.Email))
-	return c.Send("Коротка тема запиту (наприклад: «Витрати на ремонт доріг у 2025 році»):")
+	_ = c.Edit(fmt.Sprintf("✅ Обрано: %s", r.Name))
+	// dostup-first: сразу ищем распорядителя в каталоге портала
+	dm := NewDostupModule(m.deps)
+	return dm.BindDostupBody(c, r.Name)
 }
 
 func (m *NewRequestModule) HandleText(c tb.Context, step string, text string) (bool, error) {
@@ -190,9 +198,10 @@ func (m *NewRequestModule) HandleText(c tb.Context, step string, text string) (b
 	switch step {
 	case "new:ask_recipient_name":
 		sess.Draft.RecipientName = text
-		sess.Step = "new:ask_recipient_email"
 		saveSession(m.deps, c)
-		return true, c.Send("Введіть e-mail розпорядника інформації:")
+		// dostup-first: ищем в каталоге портала, email не спрашиваем
+		dm := NewDostupModule(m.deps)
+		return true, dm.BindDostupBody(c, text)
 
 	case "new:ask_recipient_email":
 		if !strings.Contains(text, "@") || !strings.Contains(text, ".") {
@@ -229,9 +238,15 @@ func (m *NewRequestModule) showConfirm(c tb.Context, improved bool) error {
 	}
 
 	preview := email.BuildRequestText(*data)
-	target := "🤝 спільний канал"
-	if !data.UseSharedMailbox {
-		target = fmt.Sprintf("📧 ваш email (%s)", data.Email)
+
+	smtpReady := m.deps.Cfg.SMTPUser != "" && m.deps.Cfg.SMTPPassword != ""
+	target := "🌐 портал «Доступ до правди» (публічна сторінка запиту)"
+	if sess.Draft.DostupSlug != "" {
+		target = fmt.Sprintf("🌐 портал «Доступ до правди» — %s", sess.Draft.RecipientName)
+	} else if smtpReady {
+		if !data.UseSharedMailbox {
+			target = fmt.Sprintf("📧 ваш email (%s)", data.Email)
+		}
 	}
 
 	aiBadge := ""
@@ -239,22 +254,20 @@ func (m *NewRequestModule) showConfirm(c tb.Context, improved bool) error {
 		aiBadge = " ✨ (Покращено AI)"
 	}
 
-	text := fmt.Sprintf("📝 *Перегляд запиту%s:*\n\n🏛 *Орган:* %s\n📨 *Кому:* %s\n📩 *Відповідь на:* %s\n\n--- *ТЕКСТ ЗАПИТУ* ---\n%s",
-		aiBadge, data.RecipientName, sess.Draft.RecipientEmail, target, preview)
+	text := fmt.Sprintf("📝 *Перегляд запиту%s:*\n\n🏛 *Орган:* %s\n📨 *Канал:* %s\n\n--- *ТЕКСТ ЗАПИТУ* ---\n%s",
+		aiBadge, data.RecipientName, target, preview)
 
 	kb := &tb.ReplyMarkup{}
 	var rows [][]tb.InlineButton
-	rows = append(rows, []tb.InlineButton{{Unique: "nr_send", Text: "✅ Надіслати запит"}})
+	// Главный канал — «Доступ до правди»
+	rows = append(rows, []tb.InlineButton{{Unique: "nr_dostup", Text: "✅ Надіслати через «Доступ до правди»"}})
 	if m.deps.Gemini != nil && m.deps.Gemini.Available() && !improved {
 		rows = append(rows, []tb.InlineButton{{Unique: "nr_improve", Text: "✨ Покращити з AI"}})
 	}
-	rows = append(rows, []tb.InlineButton{{Unique: "nr_verify", Text: "🔍 Перевірити email"}})
-	if sess.Profile.Email != "" {
-		toggleText := "🔄 Перемкнути на: 📧 мій email"
-		if !sess.Draft.UseSharedMailbox {
-			toggleText = "🔄 Перемкнути на: 🤝 спільна пошта"
-		}
-		rows = append(rows, []tb.InlineButton{{Unique: "nr_toggle", Text: toggleText}})
+	// Email-канал — только если SMTP настроен
+	if smtpReady {
+		rows = append(rows, []tb.InlineButton{{Unique: "nr_send", Text: "📧 Надіслати на email"}})
+		rows = append(rows, []tb.InlineButton{{Unique: "nr_verify", Text: "🔍 Перевірити email"}})
 	}
 	rows = append(rows, []tb.InlineButton{{Unique: "nr_cancel", Text: "❌ Скасувати"}})
 	kb.InlineKeyboard = rows
@@ -270,6 +283,11 @@ func (m *NewRequestModule) handleSendConfirm(c tb.Context) error {
 	data := email.BuildRequestDataFromSession(sess.Profile, sess.Draft, m.deps.Cfg.SharedMailbox)
 	if data == nil {
 		return c.Send("❌ Чернетка порожня.")
+	}
+
+	// Email-канал работает только при настроенном SMTP
+	if m.deps.Cfg.SMTPUser == "" || m.deps.Cfg.SMTPPassword == "" {
+		return c.Send("⚠️ Email-канал не налаштований.\n\nВикористайте головний канал — кнопка «🌐 Надіслати через «Доступ до правди»»: запит буде опубліковано на порталі й доставлено органу.")
 	}
 
 	// Rate limit check

@@ -83,6 +83,51 @@ func (s *Stats) IncrementUsers() {
 	_ = s.flush()
 }
 
+// Reconcile синхронизирует счётчики с фактичкими данными (sentlog/портал).
+// Значения применяются только если они больше текущих — счётчик не «откатывается».
+func (s *Stats) Reconcile(totalRequests, totalReplies, totalUsers int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := false
+	if totalRequests > s.data.TotalRequestsSent {
+		s.data.TotalRequestsSent = totalRequests
+		changed = true
+	}
+	if totalReplies > s.data.TotalRepliesReceived {
+		s.data.TotalRepliesReceived = totalReplies
+		changed = true
+	}
+	if totalUsers > s.data.TotalUsers {
+		s.data.TotalUsers = totalUsers
+		changed = true
+	}
+	if changed {
+		s.data.UpdatedAt = time.Now().Format(time.RFC3339)
+		_ = s.flush()
+	}
+}
+
+// SyncCounts устанавливает ТОЧНЫЕ значения счётчиков запросов и ответов.
+// Портал (через sentlog) — источник истины: если раньше автоответ был
+// ошибочно засчитан как ответ, значение корректно уменьшается.
+func (s *Stats) SyncCounts(totalRequests, totalReplies int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := false
+	if s.data.TotalRequestsSent != totalRequests {
+		s.data.TotalRequestsSent = totalRequests
+		changed = true
+	}
+	if s.data.TotalRepliesReceived != totalReplies {
+		s.data.TotalRepliesReceived = totalReplies
+		changed = true
+	}
+	if changed {
+		s.data.UpdatedAt = time.Now().Format(time.RFC3339)
+		_ = s.flush()
+	}
+}
+
 // IncrementReplies adds +1 to total replies received.
 func (s *Stats) IncrementReplies() {
 	s.mu.Lock()

@@ -295,6 +295,36 @@ small { font-size: 13px; color: var(--tg-hint); }
 .request-card.status-overdue { border-left-color: var(--c-red); }
 .request-card.status-bounced { border-left-color: var(--c-brown); }
 
+/* Статистика органа на карточке запроса */
+.request-body-stats { margin-top: 6px; }
+.body-stats-badge {
+  display: inline-block; font-size: 11px; line-height: 1.4;
+  padding: 3px 8px; border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+}
+.body-stats-badge.stats-ok { color: #7ee787; }
+.body-stats-badge.stats-warn { color: #f0c674; background: rgba(240,198,116,0.12); }
+.body-stats-badge.stats-bad { color: #ff8f8f; background: rgba(255,143,143,0.12); }
+
+/* Публичные запросы сообщества */
+.community-search { margin-bottom: 20px; }
+.community-search-input {
+  width: 100%; box-sizing: border-box;
+  padding: 12px 14px; border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: var(--tg-text); font-size: 15px;
+  margin-bottom: 10px;
+}
+.community-item {
+  padding: 12px; border-radius: 12px; margin-bottom: 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.community-item-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.community-item-title a { color: var(--tg-link); text-decoration: none; }
+.community-item-meta { font-size: 12px; color: var(--tg-hint); }
+
 .request-card-header {
   display: flex; justify-content: space-between;
   align-items: flex-start; gap: 8px;
@@ -318,9 +348,34 @@ small { font-size: 13px; color: var(--tg-hint); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .request-meta {
-  display: flex; align-items: center; gap: 8px; margin-top: 8px;
+  display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap;
 }
 .request-date { font-size: 12px; color: var(--tg-hint); }
+.request-channel {
+  font-size: 10px; font-weight: 600; padding: 2px 8px;
+  border-radius: var(--radius-pill);
+}
+.request-channel.dostup { background: rgba(88,166,255,0.15); color: #58a6ff; }
+.request-channel.email { background: rgba(139,148,158,0.15); color: #8b949e; }
+.request-portal-link {
+  display: block; margin-top: 10px; text-align: center;
+  font-size: 13px; font-weight: 600; color: #58a6ff;
+  padding: 8px 12px; border-radius: var(--radius-card);
+  background: rgba(88,166,255,0.08); border: 1px solid rgba(88,166,255,0.25);
+  text-decoration: none;
+}
+.request-portal-link:active { background: rgba(88,166,255,0.18); }
+.request-excerpt {
+  margin-top: 8px; font-size: 12px; color: var(--tg-hint);
+  padding: 8px 10px; border-left: 3px solid var(--c-green);
+  background: rgba(63,185,80,0.06); border-radius: 6px;
+  line-height: 1.45;
+}
+.request-ack {
+  margin-top: 6px; font-size: 11px; font-weight: 600; color: #58a6ff;
+  padding: 5px 10px; border-left: 3px solid #58a6ff;
+  background: rgba(88,166,255,0.08); border-radius: 6px;
+}
 .request-status-badge {
   font-size: 11px; font-weight: 600; padding: 2px 10px;
   border-radius: var(--radius-pill); color: #fff;
@@ -690,6 +745,7 @@ small { font-size: 13px; color: var(--tg-hint); }
     <div class="empty-state" id="requests-empty">
       <div class="empty-icon">📭</div>
       <p>Запити відсутні</p>
+      <p style="font-size:13px; margin-top:6px;">Створіть перший запит у боті: /new — його буде опубліковано на «Доступ до правди» з публічним посиланням.</p>
     </div>
   </div>
 </div>
@@ -737,6 +793,16 @@ small { font-size: 13px; color: var(--tg-hint); }
   </div>
 
   <div class="quick-templates">
+    <h3>🔍 Запити спільноти</h3>
+    <p style="font-size:13px;color:var(--tg-hint);margin-bottom:10px;">Перевірте, чи хтось уже запитував те саме — відповідь може вже бути опублікованою.</p>
+    <input class="community-search-input" id="community-query" placeholder="Наприклад: зарплати, укриття, електронні адреси..." onkeydown="if(event.key==='Enter')communitySearch()">
+    <button class="gen-btn" style="width:100%;margin-bottom:12px;" onclick="communitySearch()">
+      <span class="btn-text">🔍 Шукати на порталі</span>
+    </button>
+    <div id="community-results"></div>
+  </div>
+
+  <div class="quick-templates">
     <h3>Готові шаблони</h3>
     <div class="quick-template-list" id="templates-list">
       <div class="skeleton skeleton-card"></div>
@@ -765,7 +831,7 @@ small { font-size: 13px; color: var(--tg-hint); }
     </div>
     <div class="law-card">
       <div class="law-card-title">📋 Ст. 13 — Вимоги до запиту</div>
-      <div class="law-card-text">Запит може бути поданий у будь-якій формі: усно, письмово, електронною поштою. Від вас потрібні лише ім'я та спосіб отримання відповіді.</div>
+      <div class="law-card-text">Запит може бути поданий у будь-якій формі: усно, письмово, електронною поштою або через портал «Доступ до правди». Від вас потрібні лише ім'я — відповідь з'явиться на публічній сторінці запиту.</div>
     </div>
   </div>
 </div>
@@ -1200,23 +1266,125 @@ function renderRequests() {
       else if (r.daysLeft <= 1) daysClass = 'warning';
       daysHtml = `<span class="request-days ${daysClass}">${r.daysLeft < 0 ? Math.abs(r.daysLeft) + 'д' : r.daysLeft + 'д'}</span>`;
     }
+    // Ссылка на публичную страницу запроса (канал «Доступ до правди»)
+    let urlHtml = '';
+    if (r.url) {
+      urlHtml = `<a class="request-portal-link" href="${escHtml(r.url)}" target="_blank" rel="noopener">🌐 Відстежувати на порталі</a>`;
+    }
+    // Краткий текст ответа (если получен) или авто-подтверждения
+    let excerptHtml = '';
+    if (r.responseExcerpt && (r.status === 'replied' || r.replyReceivedAt || r.ackAt)) {
+      const ex = r.responseExcerpt.length > 160 ? r.responseExcerpt.slice(0, 160) + '…' : r.responseExcerpt;
+      const prefix = (r.ackAt && r.status !== 'replied') ? '📄' : '💬';
+      excerptHtml = `<div class="request-excerpt">${prefix} ${escHtml(ex)}</div>`;
+    }
+    // Промежуточная (авто-)ответ без ответа по существу
+    let ackHtml = '';
+    if (r.ackAt && r.status !== 'replied') {
+      ackHtml = '<div class="request-ack">📄 Проміжна відповідь (авто-підтвердження) — чекаємо відповідь по суті</div>';
+    }
+    // Метка канала
+    const chanHtml = r.channel === 'dostup' ? '<span class="request-channel dostup">🌐 Доступ до правди</span>' : '<span class="request-channel email">📧 Email</span>';
+    // Статистика органа (подтягивается асинхронно для dostup-запросов)
+    let statsHtml = '';
+    if (r.channel === 'dostup' && r.recipientName) {
+      statsHtml = `<div class="request-body-stats" data-organ="${escHtml(r.recipientName)}"><span class="stats-loading">📊 …</span></div>`;
+    }
     return `<div class="request-card ${st.css}">
       <div class="request-card-header">
         <span class="request-organ">${escHtml(r.recipientName || r.recipientEmail)}</span>
         ${daysHtml}
       </div>
       <div class="request-subject">${escHtml(r.subject)}</div>
+      ${statsHtml}
       <div class="request-meta">
         <span class="request-date">${formatDate(r.date)}</span>
+        ${chanHtml}
         <span class="request-status-badge ${st.badge}">${st.label}</span>
       </div>
+      ${excerptHtml}
+      ${ackHtml}
+      ${urlHtml}
     </div>`;
   }).join('');
+
+  // Асинхронно подтягиваем статистику органов (кэш в клиенте 24ч)
+  loadBodyStatsBadges();
+}
+
+/* ============================================
+   СТАТИСТИКА ОРГАНОВ (рейтинг ответов портала)
+   ============================================ */
+const bodyStatsCache = {};
+
+async function loadBodyStatsBadges() {
+  const badges = document.querySelectorAll('.request-body-stats[data-organ]');
+  const organs = new Set();
+  badges.forEach(b => organs.add(b.getAttribute('data-organ')));
+  for (const organ of organs) {
+    if (bodyStatsCache[organ] !== undefined) continue;
+    bodyStatsCache[organ] = null; // предотвращаем параллельные запросы
+    try {
+      const st = await apiCall('/api/body-stats?name=' + encodeURIComponent(organ));
+      bodyStatsCache[organ] = st && st.available ? st : null;
+    } catch (e) {
+      bodyStatsCache[organ] = null;
+    }
+  }
+  badges.forEach(b => {
+    const organ = b.getAttribute('data-organ');
+    const st = bodyStatsCache[organ];
+    if (!st) {
+      b.innerHTML = '';
+      b.style.display = 'none';
+      return;
+    }
+    const pct = st.overduePct || 0;
+    let cls = 'stats-ok', icon = '🟢';
+    if (pct >= 50) { cls = 'stats-bad'; icon = '🔴'; }
+    else if (pct >= 25 || st.successful === 0) { cls = 'stats-warn'; icon = '🟡'; }
+    b.innerHTML = `<span class="body-stats-badge ${cls}">${icon} ${st.overdue}/${st.requests} прострочено · ${st.successful} відповідей по суті</span>`;
+    b.style.display = '';
+  });
 }
 
 /* ============================================
    LIBRARY TAB
    ============================================ */
+
+/* Запити спільноти: публичный поиск на портале */
+async function communitySearch() {
+  const input = document.getElementById('community-query');
+  const results = document.getElementById('community-results');
+  const q = (input.value || '').trim();
+  if (!q) {
+    results.innerHTML = '<p style="font-size:13px;color:var(--tg-hint);">Введіть запит для пошуку.</p>';
+    return;
+  }
+  results.innerHTML = '<p style="font-size:13px;color:var(--tg-hint);">⏳ Шукаю на порталі…</p>';
+  try {
+    const data = await apiCall('/api/search-requests?q=' + encodeURIComponent(q));
+    const items = (data && data.items) || [];
+    if (!items.length) {
+      results.innerHTML = `<p style="font-size:13px;color:var(--tg-hint);">📭 Схожих запитів не знайдено — ваше буде першим. <a href="${escHtml(data.searchURL || '#')}" target="_blank" rel="noopener">Відкрити пошук на порталі</a></p>`;
+      return;
+    }
+    const statusLabels = {
+      successful: '✅ успішно', partially_successful: '✅ частково',
+      waiting_response: '⏳ очікує', waiting_classification: '⏳ очікує',
+      overdue: '🔴 прострочено', rejected: '❌ відмовлено',
+    };
+    results.innerHTML = items.map(it => `
+      <div class="community-item">
+        <div class="community-item-title"><a href="${escHtml(it.url)}" target="_blank" rel="noopener">${escHtml(it.title)}</a></div>
+        <div class="community-item-meta">${escHtml(it.bodyName || '')} ${it.status ? '· ' + (statusLabels[it.status] || it.status) : ''} ${it.date ? '· ' + formatDate(it.date) : ''}</div>
+      </div>`).join('') +
+      `<p style="font-size:12px;margin-top:6px;"><a href="${escHtml(data.searchURL)}" target="_blank" rel="noopener">Усі результати на порталі →</a></p>`;
+  } catch (e) {
+    results.innerHTML = '<p style="font-size:13px;color:var(--tg-hint);">⚠️ Пошук недоступний, спробуйте пізніше.</p>';
+  }
+}
+
 async function loadTemplates() {
   const templates = await apiCall('/api/templates');
   const list = document.getElementById('templates-list');
@@ -1376,6 +1544,3 @@ window.addEventListener('beforeinstallprompt', (e) => {
 </script>
 </body>
 </html>
-
-
-

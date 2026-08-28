@@ -67,15 +67,17 @@ func (m *StartModule) handleStart(c tb.Context) error {
 		})
 	}
 
-	welcome := "👋 Вітаю! Я — *Прозоро*, бот для запитів на публічну інформацію.\n\n" +
+	welcome := "👋 Вітаю! Я — *Прозоро*, помічник для запитів на публічну інформацію через портал «Доступ до правди» (dostup.org.ua).\n\n" +
+		"🌐 *ЯК ЦЕ ПРАЦЮЄ:*\n" +
+		"• Ваш запит публікується на порталі та прямує до держоргану.\n" +
+		"• Ви отримуєте *публічне посилання* — відповідь видно без реєстрації.\n" +
+		"• Я *повідомлю в цей чат*, коли орган відповість.\n\n" +
 		"🛡️ *БЕЗПЕКА ТА АНОНІМНІСТЬ:*\n" +
-		"• *Ваші дані захищені:* ми не зберігаємо зайвої інформації.\n" +
-		"• *Повна анонімність:* запити йдуть зі спільної пошти бота, ваше прізвище не обов'язкове.\n" +
-		"• *Юридична сила:* все згідно Закону України № 2939-VI.\n\n" +
-		"🔒 *Мінімум даних.* Достатньо вашого *імені* та *email*.\n\n" +
-		"✍️ *Без підпису.* Електронні запити не потребують підпису.\n\n" +
-		"📨 *Як це працює.* Відповідь прийде особисто вам у цей чат.\n\n" +
-		"▶️ Почати: /profile, потім /new\n" +
+		"• Запити подаються від громадської ініціативи «Громадський моніторинг» — ваше прізвище не обов'язкове.\n" +
+		"• Юридична сила: ЗУ № 2939-VI «Про доступ до публічної інформації».\n" +
+		"• Публічність запиту — додатковий тиск на орган і захист від ігнорування.\n\n" +
+		"✍️ Електронні запити не потребують підпису. Email не потрібен.\n\n" +
+		"▶️ Почати: /new\n" +
 		"📚 Готові шаблони: /templates\n" +
 		"🔍 Пошук органу: надішліть назву прямо в чат"
 
@@ -144,17 +146,16 @@ func (m *StatsModule) handleAdminStats(c tb.Context) error {
 		replyRate = gs.TotalRepliesReceived * 100 / gs.TotalRequestsSent
 	}
 
-	dailyLimit := 280
-	dailyRemaining := m.deps.Stats.DailyRemaining(dailyLimit)
-	dailyUsed := dailyLimit - dailyRemaining
-	if dailyUsed < 0 {
-		dailyUsed = 0
+	// Живые статусы из портала: сколько запросов ждут ответа
+	dostupPending := 0
+	if m.deps.SentLog != nil {
+		dostupPending = len(m.deps.SentLog.ListPendingDostup())
 	}
 
 	moduleText := ""
 	if len(gs.ModuleUsage) > 0 {
 		moduleText = "\n📈 *По модулях:*\n"
-		for _, name := range []string{"new_request", "voice", "copilot", "templates", "hotlines"} {
+		for _, name := range []string{"new_request", "dostup", "voice", "copilot", "templates", "hotlines"} {
 			if count, ok := gs.ModuleUsage[name]; ok && count > 0 {
 				moduleText += fmt.Sprintf("  • %s: %d\n", moduleLabel(name), count)
 			}
@@ -170,15 +171,16 @@ func (m *StatsModule) handleAdminStats(c tb.Context) error {
 
 	text := fmt.Sprintf("📊 *Глобальний дашборд:*\n\n"+
 		"👥 Унікальних користувачів: %d\n"+
-		"📨 Всього запитів: %d\n"+
+		"🌐 Запитів на порталі: %d\n"+
 		"✅ Отримано відповідей: %d (%d%%)\n"+
-		"❌ Bounced: %d\n"+
-		"📧 Сьогодні надіслано: %d/%d (Brevo ліміт)\n"+
+		"⏳ Очікують відповіді: %d\n"+
+		"🔄 Синхронізація з порталом: кожні %d хв\n"+
 		"%s\n"+
-		"🔄 Оновлено: %s",
+		"🔄 Оновлено: %s\n\n"+
+		"Форсувати синхронізацію: /sync",
 		gs.TotalUsers, gs.TotalRequestsSent, gs.TotalRepliesReceived,
-		replyRate, gs.TotalBounced,
-		dailyUsed, dailyLimit,
+		replyRate, dostupPending,
+		m.deps.Cfg.DostupSyncMinutes,
 		moduleText, updatedStr)
 
 	return c.Send(text, tb.ModeMarkdown)
@@ -187,6 +189,7 @@ func (m *StatsModule) handleAdminStats(c tb.Context) error {
 func moduleLabel(name string) string {
 	labels := map[string]string{
 		"new_request": "Нові запити",
+		"dostup":      "Доступ до правди",
 		"voice":       "Голосові",
 		"copilot":     "Copilot",
 		"templates":   "Шаблони",
