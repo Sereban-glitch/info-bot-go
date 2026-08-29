@@ -81,6 +81,7 @@ func AllModules(deps *Deps) []Module {
 	dostupMod := NewDostupModule(deps)
 	followUpMod := NewFollowUpModule(deps)
 	ratingMod := NewRatingModule(deps)
+	privacyMod := NewPrivacyModule(deps)
 
 	voiceMod.SetBugReportModule(bugReportMod)
 	voiceMod.SetFollowUpModule(followUpMod)
@@ -107,6 +108,7 @@ func AllModules(deps *Deps) []Module {
 		dostupMod,
 		followUpMod,
 		ratingMod,
+		privacyMod,
 	}
 }
 

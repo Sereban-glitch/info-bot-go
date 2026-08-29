@@ -923,6 +923,8 @@ small { font-size: 13px; color: var(--tg-hint); }
 
   <a class="profile-edit-link" onclick="sendBotCommand('/profile')">✏️ Редагувати в чат-боті</a>
 
+  <a class="profile-edit-link" style="color:var(--tg-destructive);" onclick="deleteMyData()">🗑 Видалити мої дані</a>
+
   <div class="stats-row" style="margin-top:var(--spacing);">
     <div class="stat-card">
       <div class="stat-number" style="color:var(--tg-button)" id="profile-stat-total">0</div>
@@ -1133,9 +1135,12 @@ async function loadRating(append) {
   }
   try {
     // Публичный эндпоинт: обычный fetch, без подписи — доступен из браузера.
+    // ФИКС (ТЗ №5): раньше здесь был '/rating' — без префикса /api запрос
+    // уходил на статический файловый сервер и получал 404, поэтому вкладка
+    // «Рейтинг» в мини-приложении всегда показывала «данные недоступны».
     const params = new URLSearchParams({ sort: ratingSort, offset: ratingOffset, limit: RATING_PAGE });
     if (ratingQuery) params.set('q', ratingQuery);
-    const res = await fetch(API_BASE + '/rating?' + params.toString());
+    const res = await fetch(API_BASE + '/api/rating?' + params.toString());
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     if (!json.ok || !json.data) throw new Error(json.error || 'некоректна відповідь');
@@ -1715,6 +1720,26 @@ async function loadProfile() {
     document.getElementById('profile-stat-total').textContent = stats.total || 0;
     document.getElementById('profile-stat-replied').textContent = stats.replied || 0;
   }
+}
+
+// ТЗ №5 — видалення персональних даних (ЗУ №2297-IV). Підпис відкриває
+// доступ до особистих даних, тому запит іде з тим самим initData.
+async function deleteMyData() {
+  if (!tg || !tg.initData) {
+    showToast('Доступно лише в Telegram');
+    return;
+  }
+  const ok = confirm('Видалити всі ваші дані з бота?\n\nБуде видалено назавжди: профіль, чернетки, історію запитів і гілки уточнень.\n\nЗапити, вже публічні на dostup.org.ua, залишаться на порталі — ми не можемо їх звідти видалити.');
+  if (!ok) return;
+  const second = confirm('Точно? Цю дію не можна відмінити.');
+  if (!second) return;
+  const data = await apiCall('/api/delete-my-data', { method: 'POST' });
+  if (!data) {
+    showToast('Не вдалося — спробуйте ще раз');
+    return;
+  }
+  showToast('✅ Дані видалено');
+  setTimeout(() => { loadProfile(); loadOverview(); }, 600);
 }
 
 /* ============================================

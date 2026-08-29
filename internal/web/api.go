@@ -358,6 +358,46 @@ func (s *Server) handleGenerateTemplate(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: result})
 }
 
+// handleDeleteMyData — ТЗ №5: полное удаление персональных данных
+// пользователя (ЗУ №2297-IV). Требует подпись Telegram (authMiddleware
+// стоит перед этим обработчиком в маршруте). Удаление идёт под
+// сессионной блокировкой — даже если пользователь одновременно пишет
+// боту, данные не «перетрутся» и частичного удаления не случится.
+func (s *Server) handleDeleteMyData(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{OK: false, Err: "method not allowed"})
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == 0 {
+		writeJSON(w, http.StatusUnauthorized, APIResponse{OK: false, Err: "unauthorized"})
+		return
+	}
+
+	key := session.SessionKey(userID)
+	s.sessions.LockSession(key)
+	defer s.sessions.UnlockSession(key)
+
+	removed := 0
+	if s.sentLog != nil {
+		n, err := s.sentLog.DeleteByUser(userID)
+		if err != nil {
+			log.Printf("[WEB] delete-my-data: журнал, user=%d: %v", userID, err)
+			writeJSON(w, http.StatusInternalServerError, APIResponse{OK: false, Err: "failed to delete history"})
+			return
+		}
+		removed = n
+	}
+	s.sessions.Delete(key)
+
+	log.Printf("[WEB] delete-my-data: user=%d видалено (записів: %d)", userID, removed)
+	writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: map[string]interface{}{
+		"deleted":        true,
+		"removedEntries": removed,
+	}})
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

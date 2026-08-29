@@ -188,6 +188,36 @@ func (sl *SentLog) ListAll() []SentEntry {
 	return result
 }
 
+// DeleteByUser удаляет ВСЕ записи пользователя из журнала (ТЗ №5,
+// /delete_my_data по ЗУ №2297-IV «Про захист персональних даних»).
+// Возвращает количество удалённых записей. Файл журнала переписывается
+// атомарно (tmp + rename), поэтому сбой посреди удаления не портит данные.
+//
+// Важно: публичные страницы запросов на dostup.org.ua остаются доступными —
+// они вне нашего контроля; удаляется только локальная копия истории.
+func (sl *SentLog) DeleteByUser(userID int64) (int, error) {
+	sl.mu.Lock()
+	defer sl.mu.Unlock()
+
+	kept := sl.cache[:0]
+	removed := 0
+	for _, e := range sl.cache {
+		if e.UserID == userID {
+			removed++
+			continue
+		}
+		kept = append(kept, e)
+	}
+	if removed == 0 {
+		return 0, nil
+	}
+	sl.cache = kept
+	if err := sl.flush(); err != nil {
+		return removed, err
+	}
+	return removed, nil
+}
+
 // BodyTiming — среднее время ответа органа по нашим собственным данным
 // (портал таймингов не отдаёт — это уникальная метрика бота).
 type BodyTiming struct {
@@ -249,15 +279,21 @@ func (sl *SentLog) ListPendingDostup() []SentEntry {
 // UpdateDostupStatus обновляет статус портала у записи (по MessageID).
 // replied=true — содержательный ответ получен (счёт засчитан);
 // lastIncomingID — идентификатор входящего для дедупликации уведомлений.
+//
+// ТЗ №5, фикс спама: обновляются ВСЕ записи с этим MessageID (раньше —
+// только первая; если данных оказывалось две, «вторая» никогда не
+// получала идентификатор входящего и уведомляла каждый цикл).
 func (sl *SentLog) UpdateDostupStatus(messageID, status, excerpt, lastIncomingID string, replied bool) error {
 	sl.mu.Lock()
 	defer sl.mu.Unlock()
 
 	normalized := normalizeMessageID(messageID)
+	matched := false
 	for i := range sl.cache {
 		if normalizeMessageID(sl.cache[i].MessageID) != normalized {
 			continue
 		}
+		matched = true
 		sl.cache[i].LastStatus = status
 		sl.cache[i].StatusCheckedAt = nowISO()
 		if excerpt != "" {
@@ -270,6 +306,8 @@ func (sl *SentLog) UpdateDostupStatus(messageID, status, excerpt, lastIncomingID
 			sl.cache[i].Status = "replied"
 			sl.cache[i].ReplyReceivedAt = nowISO()
 		}
+	}
+	if matched {
 		return sl.flush()
 	}
 	return nil
@@ -278,15 +316,18 @@ func (sl *SentLog) UpdateDostupStatus(messageID, status, excerpt, lastIncomingID
 // MarkAcknowledged фиксирует промежуточную (авто-)ответ органа —
 // подтверждение получения запроса. Ответом по существу НЕ считается:
 // запрос остаётся в ожидании, счётчик ответов не трогаем.
+// Обновляются ВСЕ записи с этим MessageID (защита от спама, ТЗ №5).
 func (sl *SentLog) MarkAcknowledged(messageID, status, excerpt, lastIncomingID string) error {
 	sl.mu.Lock()
 	defer sl.mu.Unlock()
 
 	normalized := normalizeMessageID(messageID)
+	matched := false
 	for i := range sl.cache {
 		if normalizeMessageID(sl.cache[i].MessageID) != normalized {
 			continue
 		}
+		matched = true
 		sl.cache[i].LastStatus = status
 		sl.cache[i].StatusCheckedAt = nowISO()
 		if excerpt != "" {
@@ -298,6 +339,8 @@ func (sl *SentLog) MarkAcknowledged(messageID, status, excerpt, lastIncomingID s
 		if sl.cache[i].AckAt == "" {
 			sl.cache[i].AckAt = nowISO()
 		}
+	}
+	if matched {
 		return sl.flush()
 	}
 	return nil

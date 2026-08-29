@@ -194,9 +194,18 @@ func (t *FollowUpThreads) List(userID int64, limit int) []FollowUpThread {
 	if limit > 0 && len(list) > limit {
 		list = list[:limit]
 	}
-	out := make([]FollowUpThread, len(list))
-	copy(out, list)
-	return out
+	return list
+}
+
+// DeleteByUser удаляет все гилки пользователя (ТЗ №5, /delete_my_data).
+func (t *FollowUpThreads) DeleteByUser(userID int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if _, ok := t.data[userID]; !ok {
+		return
+	}
+	delete(t.data, userID)
+	t.save()
 }
 
 // Upsert добавляет/обновляет гилку (по слагу) наверху списка.
@@ -260,11 +269,25 @@ func (t *FollowUpThreads) MarkReminded(userID int64, slug, at string) {
 	t.save()
 }
 
-// FileStore implements file-based session storage.
+// FileStore is a file-based session storage.
+//
+// ТЗ №5 — целостность при одновременной работе: Get возвращает ОБЩИЙ
+// указатель на данные сессии. Если один пользователь шлёт сообщения
+// из двух устройств (или бот и мини-приложение работают одновременно),
+// два обработчика могут менять одни и те же данные параллельно — вплоть
+// до потери апдейтов и «fatal error: concurrent map write» (убивает весь
+// процесс, recover не помогает).
+//
+// Решение — полосовые (striped) блокировки по ключу сессии: LockSession/
+// UnlockSession сериализуют всю работу с сессией одного пользователя.
+// Полосы (256 штук) распределяют разных пользователей по разным
+// блокировкам — чужие друг другу люди не ждут.
 type FileStore struct {
 	dir   string
 	mu    sync.RWMutex
 	cache map[string]*SessionData
+
+	stripes [256]sync.Mutex // полосовые блокировки: ключ → полоса по хешу
 }
 
 // NewFileStore creates a new file-based session store.
@@ -276,6 +299,29 @@ func NewFileStore(dir string) (*FileStore, error) {
 		dir:   dir,
 		cache: make(map[string]*SessionData),
 	}, nil
+}
+
+// stripeIndex — номер полосы для ключа (FNV-1a, стабильно между запусками).
+func (s *FileStore) stripeIndex(key string) int {
+	var h uint32 = 2166136261
+	for i := 0; i < len(key); i++ {
+		h ^= uint32(key[i])
+		h *= 16777619
+	}
+	return int(h % 256)
+}
+
+// LockSession блокирует сессию пользователя: пока блокировка держится,
+// никакой другой обработчик не может concurrently менять эту же сессию.
+// Используется middleware бота и HTTP-обработчиками мини-приложения.
+// ОБЯЗАТЕЛЬНО парный UnlockSession (лучше через defer).
+func (s *FileStore) LockSession(key string) {
+	s.stripes[s.stripeIndex(key)].Lock()
+}
+
+// UnlockSession освобождает сессионную блокировку.
+func (s *FileStore) UnlockSession(key string) {
+	s.stripes[s.stripeIndex(key)].Unlock()
 }
 
 // Get returns session data for the given key, loading from file if needed.
@@ -313,6 +359,17 @@ func (s *FileStore) Set(key string, data *SessionData) error {
 
 	path := filepath.Join(s.dir, key+".json")
 	return s.saveData(path, data)
+}
+
+// Delete удаляет сессию пользователя полностью (ТЗ №5, /delete_my_data):
+// из кэша и с диска. Возвращает true, если файл существовал.
+func (s *FileStore) Delete(key string) bool {
+	s.mu.Lock()
+	delete(s.cache, key)
+	s.mu.Unlock()
+
+	err := os.Remove(filepath.Join(s.dir, key+".json"))
+	return err == nil
 }
 
 // Close flushes any pending data.

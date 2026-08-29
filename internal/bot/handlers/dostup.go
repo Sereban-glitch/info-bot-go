@@ -495,6 +495,30 @@ func (m *DostupModule) handleSubmit(c tb.Context) error {
 		return c.Edit(fmt.Sprintf("❌ Помилка надсилання: %s\n\nЧернетка збережена, спробуйте ще раз.", err))
 	}
 
+	// Страховка от чужого адреса (ТЗ №5, фикс спама): если портал вернул
+	// адрес, который уже занят ДРУГИМ запросом в журнале, — сверяемся со
+	// списком «Мої запити» и берём настоящий свежий запрос. Даже если эта
+	// страховка не сработает, журнал обновляет ВСЕ записи с одинаковым
+	// идентификатором — спама больше не будет в любом случае.
+	if existing := m.deps.SentLog.FindByMessageID("dostup:" + info.Slug); existing != nil && existing.Subject != title {
+		log.Printf("[DOSTUP] подозрение на чужой адрес: slug=%s уже записан с темой %q (новая: %q) — сверяю с «Мої запити»",
+			info.Slug, existing.Subject, title)
+		if reqs, err := m.deps.Dostup.MyRequestsFull(); err == nil {
+			lp := strings.ToLower(title)
+			if len(lp) > 30 {
+				lp = lp[:30]
+			}
+			for _, pr := range reqs {
+				if strings.Contains(strings.ToLower(pr.Title), lp) &&
+					m.deps.SentLog.FindByMessageID("dostup:"+pr.Slug) == nil {
+					log.Printf("[DOSTUP] сверка: беру свежий запрос %s вместо %s", pr.Slug, info.Slug)
+					info = &pr.RequestInfo
+					break
+				}
+			}
+		}
+	}
+
 	// Лог отправки
 	_ = m.deps.SentLog.Append(sentlog.SentEntry{
 		MessageID:      "dostup:" + info.Slug,

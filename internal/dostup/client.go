@@ -421,31 +421,63 @@ func (c *Client) SubmitRequest(bodySlug, title, text string) (*RequestInfo, erro
 		return nil, ErrRateLimited
 	}
 
-	// Ищем ссылку на созданный запрос
-	if m := reRequestLink.FindStringSubmatch(sendPage); m != nil {
-		return &RequestInfo{
-			URL:   c.BaseURL + m[1],
-			Slug:  strings.TrimPrefix(m[1], "/request/"),
-			Title: title,
-		}, nil
+	// Ищем ссылку на созданный запрос — НАДЁЖНО (ТЗ №5, фикс спама).
+	//
+	// Исторический баг: бралась первая попавшаяся ссылка /request/... со
+	// страницы ответа. Если на ней была ссылка на ДРУГОЙ запрос (например,
+	// прошлый запрос пользователя в боковой панели), бот записывал чужой
+	// адрес — две записи делили один идентификатор, защита от дублей
+	// обновляла не ту запись, и пользователь получал одно и то же
+	// уведомление каждые 20 минут.
+	//
+	// Порядок теперь такой (от самого надёжного к запасному):
+	//   1) адрес из редиректа после отправки (сервер сам говорит, куда);
+	//   2) «Мої запити»: новейший запрос с совпадающей темой — авторитетный
+	//      список самого портала;
+	//   3) ссылка со страницы ответа — только если она подтверждается
+	//      списком «Мої запити»;
+	//   4) ссылка со страницы ответа без подтверждения — крайний случай.
+	candidate := ""
+	if code == 302 || code == 303 {
+		if loc := c.lastLocation; strings.HasPrefix(loc, "/request/") {
+			candidate = strings.TrimPrefix(loc, "/request/")
+		}
+	}
+	if candidate == "" {
+		if m := reRequestLink.FindStringSubmatch(sendPage); m != nil {
+			candidate = strings.TrimPrefix(m[1], "/request/")
+		}
 	}
 
-	// Иногда после успешного создания бывает 302 на страницу запроса.
-	if code == 302 || code == 303 {
-		if reqs, err := c.MyRequests(); err == nil && len(reqs) > 0 {
-			prefix := title
-			if len(prefix) > 30 {
-				prefix = prefix[:30]
+	// Проверка по «Мої запити»: список свежих запросов портала.
+	prefix := title
+	if len(prefix) > 30 {
+		prefix = prefix[:30]
+	}
+	lp := strings.ToLower(prefix)
+	if reqs, err := c.MyRequests(); err == nil {
+		// 1) точное попадание: запрос с темой-префиксом — это и есть новый
+		//    (список свежие-сверху, поэтому первым найдётся именно он)
+		for i := range reqs {
+			if strings.Contains(strings.ToLower(reqs[i].Title), lp) {
+				return &reqs[i], nil
 			}
-			for _, r := range reqs {
-				if strings.Contains(strings.ToLower(r.Title), strings.ToLower(prefix)) {
-					return &r, nil
+		}
+		// 2) адрес из редиректа подтверждён списком
+		if candidate != "" {
+			for i := range reqs {
+				if reqs[i].Slug == candidate {
+					return &reqs[i], nil
 				}
 			}
-			// Вернём самый свежий как наиболее вероятный результат
-			r := reqs[0]
-			return &r, nil
 		}
+	}
+	if candidate != "" {
+		return &RequestInfo{
+			URL:   c.BaseURL + "/request/" + candidate,
+			Slug:  candidate,
+			Title: title,
+		}, nil
 	}
 	return nil, ErrInvalidResponse
 }
@@ -533,15 +565,18 @@ func (c *Client) MyRequestsFull() ([]PortalRequest, error) {
 		seen[slug] = true
 		pr := PortalRequest{
 			RequestInfo: RequestInfo{
-				URL:   c.BaseURL + ml[1],
-				Slug:  slug,
-				Title: strings.TrimSpace(reTag.ReplaceAllString(ml[3], "")),
+				URL:  c.BaseURL + ml[1],
+				Slug: slug,
+				// htmlUnescape: названия с апострофами
+				// приходят как «здоров&#39;я» — разкодируем,
+				// иначе криво сохранится в журнал (ТЗ №5)
+				Title: strings.TrimSpace(htmlUnescape(reTag.ReplaceAllString(ml[3], ""))),
 			},
 			HasResponse: ml[2] != "", // ссылка «#incoming-N» — есть ответ
 		}
 		if mb := reListingBody.FindStringSubmatch(blk); mb != nil {
 			pr.BodySlug = mb[1]
-			pr.BodyName = strings.TrimSpace(reTag.ReplaceAllString(mb[2], ""))
+			pr.BodyName = strings.TrimSpace(htmlUnescape(reTag.ReplaceAllString(mb[2], "")))
 		}
 		if mt := reListingTime.FindStringSubmatch(blk); mt != nil {
 			pr.Date = mt[1]

@@ -81,13 +81,7 @@ func ValidateInitData(initData, botToken string) (int64, bool) {
 	dataCheckString := sb.String()
 	log.Printf("[AUTH-VALIDATE] data-check-string length: %d", len(dataCheckString))
 
-	secretKeyMac := hmac.New(sha256.New, []byte(botToken))
-	secretKeyMac.Write([]byte("WebAppData"))
-	secretKey := secretKeyMac.Sum(nil)
-
-	hashMac := hmac.New(sha256.New, secretKey)
-	hashMac.Write([]byte(dataCheckString))
-	computedHash := hashMac.Sum(nil)
+	computedHash := computeInitDataHash(dataCheckString, botToken)
 
 	computedHex := hex.EncodeToString(computedHash)
 	log.Printf("[AUTH-VALIDATE] hash compare: computed=%s received=%s match=%v", computedHex[:16]+"...", hash[:min(16, len(hash))]+"...", hmac.Equal([]byte(computedHex), []byte(hash)))
@@ -114,6 +108,26 @@ func extractUserID(jsonStr string) int64 {
 		return 0
 	}
 	return user.ID
+}
+
+// computeInitDataHash считает подпись initData по спецификации Telegram:
+//
+//	secret_key = HMAC_SHA256(key: "WebAppData", data: <bot_token>)
+//	hash       = HMAC_SHA256(key: secret_key, data: data_check_string)
+//
+// ВАЖНО: ключ и сообщение нельзя менять местами — HMAC несимметричен.
+// Исторический баг (ТЗ №5): ключ и сообщение были переставлены, из-за
+// чего подписи РЕАЛЬНЫХ клиентов Telegram никогда не совпадали, а профиль
+// в мини-приложении всегда показывался пустым. Юнит-тест с контрольным
+// вектором (TestComputeInitDataHashReferenceVector) защищает от регресса.
+func computeInitDataHash(dataCheckString, botToken string) []byte {
+	secretKeyMac := hmac.New(sha256.New, []byte("WebAppData"))
+	secretKeyMac.Write([]byte(botToken))
+	secretKey := secretKeyMac.Sum(nil)
+
+	hashMac := hmac.New(sha256.New, secretKey)
+	hashMac.Write([]byte(dataCheckString))
+	return hashMac.Sum(nil)
 }
 
 func min(a, b int) int {

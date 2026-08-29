@@ -77,6 +77,9 @@ func (s *Server) Start(addr string) error {
 	mux.HandleFunc("/api/rating", s.corsMiddleware(pub(s.handleRating))) // публичный: агрегаты без ПД
 	mux.HandleFunc("/api/body-stats", s.corsMiddleware(aut(s.authMiddleware(s.handleBodyStats))))
 	mux.HandleFunc("/api/search-requests", s.corsMiddleware(aut(s.authMiddleware(s.handleSearchRequests))))
+	// ТЗ №5: удаление персональных данных — только POST с подписью Telegram;
+	// лимит «дорогих» действий (gen) — 6/мин, чтобы нельзя было долбить
+	mux.HandleFunc("/api/delete-my-data", s.corsMiddleware(gen(s.authMiddleware(s.handleDeleteMyData))))
 
 	// Static files (mini-app HTML)
 	staticFS, err := fs.Sub(staticFiles, "static")

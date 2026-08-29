@@ -87,3 +87,12 @@ func pickRefNum(ref string) int {
 	}
 	return 0
 }
+
+// forgetPicks очищает реестр коротких ссылок пользователя (ТЗ №5,
+// /delete_my_data) — он в памяти, но лучше не оставлять следов.
+func forgetPicks(userID int64) {
+	picks.mu.Lock()
+	defer picks.mu.Unlock()
+	delete(picks.seq, userID)
+	delete(picks.data, userID)
+}

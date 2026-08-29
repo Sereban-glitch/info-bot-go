@@ -1,8 +1,6 @@
 package web
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,7 +17,8 @@ import (
 const testBotToken = "123456:TEST-TOKEN-for-auth-middleware"
 
 // signInitData строит валидный initData с HMAC-подписью Telegram WebApp
-// (алгоритм: secret = HMAC(botToken, "WebAppData"); hash = HMAC(secret, dataCheckString)).
+// (алгоритм — по спецификации; см. computeInitDataHash и контрольный вектор
+// TestComputeInitDataHashReferenceVector).
 func signInitData(t *testing.T, userID int64, botToken string) string {
 	t.Helper()
 	userJSON, _ := json.Marshal(map[string]interface{}{"id": userID, "first_name": "Тест"})
@@ -42,15 +41,12 @@ func signInitData(t *testing.T, userID int64, botToken string) string {
 		dcs += k + "=" + params.Get(k)
 	}
 
-	secretMac := hmac.New(sha256.New, []byte(botToken))
-	secretMac.Write([]byte("WebAppData"))
-	secret := secretMac.Sum(nil)
-
-	hashMac := hmac.New(sha256.New, secret)
-	hashMac.Write([]byte(dcs))
-	hash := hex.EncodeToString(hashMac.Sum(nil))
-
-	params.Set("hash", hash)
+	// Подпись — строго по спецификации Telegram WebApps:
+	//   secret_key = HMAC_SHA256(key: "WebAppData", data: <bot_token>)
+	//   hash       = HMAC_SHA256(key: secret_key, data: data_check_string)
+	// (раньше здесь были переставлены ключ и сообщение — тест проходил,
+	// а реальные клиенты Telegram — нет; см. TestComputeInitDataHashReferenceVector)
+	params.Set("hash", hex.EncodeToString(computeInitDataHash(dcs, botToken)))
 	return params.Encode()
 }
 
@@ -153,5 +149,23 @@ func TestAuthPassesValidHMAC(t *testing.T) {
 	mw(rec, req)
 	if rec.Code != http.StatusUnauthorized || called {
 		t.Errorf("forged: code=%d called=%v — подпись чужим токеном обязана отвергаться", rec.Code, called)
+	}
+}
+
+// TestComputeInitDataHashReferenceVector — контрольный вектор, независимо
+// посчитанный по спецификации Telegram WebApps (Python: hmac.new(
+// b"WebAppData", bot_token, sha256)). Если кто-то снова переставит ключ
+// и сообщение местами (исторический баг ТЗ №5), этот тест упадёт —
+// в отличие от roundtrip-тестов, которые самосогласованы и подмену не ловят.
+func TestComputeInitDataHashReferenceVector(t *testing.T) {
+	const botToken = "5432109876:AAE-9p0ZtestTESTtestTESTtestTESTtes"
+	dcs := "auth_date=1758969246\n" +
+		"query_id=AAF17IkBEQAAAAAA-H0Q4AAF-9p0Z\n" +
+		`user={"id":745130167,"first_name":"Сергій","last_name":"Гаршин","username":"sereban_tech","language_code":"uk"}`
+
+	got := hex.EncodeToString(computeInitDataHash(dcs, botToken))
+	want := "c5e54d340a0a691ae9e3b166172acbc1bc12f05bb670fd274a0373b5ef3e62de"
+	if got != want {
+		t.Fatalf("подпись не совпадает с контрольным вектором спецификации:\n got  %s\n want %s", got, want)
 	}
 }

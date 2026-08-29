@@ -221,6 +221,14 @@ func (b *Bot) sessionMiddleware() tb.MiddlewareFunc {
 			}
 			key := session.SessionKey(c.Sender().ID)
 
+			// ТЗ №5 — целостность при одновременной работе: вся обработка
+			// сообщений одного пользователя идёт под персональной
+			// блокировкой. Сообщения из двух устройств (или работа бота и
+			// мини-приложения одновременно) больше не «топчут» сессию друг
+			// друга и не дают гонок на общих данных.
+			b.sessions.LockSession(key)
+			defer b.sessions.UnlockSession(key)
+
 			isNewUser := false
 			sessionPath := filepath.Join(b.sessDir, key+".json")
 			if _, err := os.Stat(sessionPath); os.IsNotExist(err) {
