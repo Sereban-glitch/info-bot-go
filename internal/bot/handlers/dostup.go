@@ -663,6 +663,7 @@ func (m *DostupModule) ShowCatalog(c tb.Context) error {
 	if len(row) > 0 {
 		rows = append(rows, row)
 	}
+	rows = append(rows, []tb.InlineButton{{Unique: "rtg_page", Text: "🏆 Рейтинг органів", Data: "o|0"}})
 	rows = append(rows, []tb.InlineButton{{Unique: "cat_cancel", Text: "❌ Закрити"}})
 	kb.InlineKeyboard = rows
 
@@ -799,6 +800,21 @@ func (m *DostupModule) bodyStatsLine(slug string) string {
 	if err != nil || st == nil || st.Requests == 0 {
 		return ""
 	}
-	return fmt.Sprintf("\n📊 Запитів до органу на порталі: %d, по суті відповідей: %d, прострочено: %d.",
-		st.Requests, st.Successful, st.Overdue)
+	var b strings.Builder
+	if idx, ok := dostup.OpennessIndex(st); ok {
+		b.WriteString(fmt.Sprintf("\n📊 <b>Індекс відкритості: %d/100</b> %s\nПо суті %d із %d запитів · прострочено %d%%.",
+			idx, dostup.RatingBadge(idx), st.Successful, st.Requests, st.OverduePct()))
+		// Среднее время ответа — наши данные (портал таймингов не отдаёт)
+		if m.deps.SentLog != nil {
+			if name := m.bodyNameBySlug(slug); name != "" {
+				if t, ok := m.deps.SentLog.AvgResponseHoursByBody()[strings.ToLower(name)]; ok && t.Count >= 2 {
+					b.WriteString(fmt.Sprintf("\n⏱ Сер. час відповіді за нашими даними: %.1f год (n=%d).", t.Hours, t.Count))
+				}
+			}
+		}
+	} else {
+		b.WriteString(fmt.Sprintf("\n📊 Запитів до органу на порталі: %d, по суті відповідей: %d, прострочено: %d.",
+			st.Requests, st.Successful, st.Overdue))
+	}
+	return b.String()
 }

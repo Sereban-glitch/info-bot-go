@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -185,6 +186,50 @@ func (sl *SentLog) ListAll() []SentEntry {
 	result := make([]SentEntry, len(sl.cache))
 	copy(result, sl.cache)
 	return result
+}
+
+// BodyTiming — среднее время ответа органа по нашим собственным данным
+// (портал таймингов не отдаёт — это уникальная метрика бота).
+type BodyTiming struct {
+	Hours float64 // среднее время от отправки до ответа по существу
+	Count int     // сколько ответов учтено
+}
+
+// AvgResponseHoursByBody агрегирует среднее время ответа по органам
+// (канал dostup, только завершённые «по суті» запросы с обеими метками
+// времени). Ключ — название органа в нижнем регистре (DostupBody).
+func (sl *SentLog) AvgResponseHoursByBody() map[string]BodyTiming {
+	out := map[string]BodyTiming{}
+	sums := map[string]float64{}
+	for _, e := range sl.ListAll() {
+		if e.Channel != "dostup" || e.ReplyReceivedAt == "" || e.Date == "" {
+			continue
+		}
+		sent, err1 := time.Parse(time.RFC3339, e.Date)
+		replied, err2 := time.Parse(time.RFC3339, e.ReplyReceivedAt)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		h := replied.Sub(sent).Hours()
+		if h < 0 {
+			continue // защита от битых меток (ответ раньше отправки)
+		}
+		name := strings.ToLower(strings.TrimSpace(e.DostupBody))
+		if name == "" {
+			continue
+		}
+		t := out[name]
+		sums[name] += h
+		t.Count++
+		out[name] = t
+	}
+	for name, t := range out {
+		if t.Count > 0 {
+			t.Hours = sums[name] / float64(t.Count)
+			out[name] = t
+		}
+	}
+	return out
 }
 
 // ListPendingDostup возвращает запросы канала dostup, ещё не получившие ответ.

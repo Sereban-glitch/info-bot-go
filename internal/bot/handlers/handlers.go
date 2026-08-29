@@ -35,6 +35,7 @@ type Deps struct {
 	Dostup        *dostup.Client           // канал «Доступ до правди» (dostup.org.ua), может быть nil
 	DostupSync    *DostupSync              // фоновый воркер синхронизации с порталом, может быть nil
 	DostupCatalog *dostup.CatalogStore     // локальный каталог распорядителей (может быть nil)
+	DostupRatings *dostup.RatingsStore     // персистентные рейтинги органов (может быть nil)
 	FollowUps     *session.FollowUpThreads // гилки запросов для уточнений (может быть nil)
 }
 
@@ -79,6 +80,7 @@ func AllModules(deps *Deps) []Module {
 	searchMod := NewSearchModule(deps)
 	dostupMod := NewDostupModule(deps)
 	followUpMod := NewFollowUpModule(deps)
+	ratingMod := NewRatingModule(deps)
 
 	voiceMod.SetBugReportModule(bugReportMod)
 	voiceMod.SetFollowUpModule(followUpMod)
@@ -104,6 +106,7 @@ func AllModules(deps *Deps) []Module {
 		searchMod,
 		dostupMod,
 		followUpMod,
+		ratingMod,
 	}
 }
 

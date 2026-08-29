@@ -83,7 +83,7 @@ func main() {
 	// Start HTTP server for Mini App and API
 	webServer := web.NewServer(cfg, sessStore, sentLog, b.Rotator(), dir)
 	// Канал портала: рейтинги органов + поиск по публичным запросам
-	webServer.SetDostup(b.Dostup(), b.DostupCatalog())
+	webServer.SetDostup(b.Dostup(), b.DostupCatalog(), b.DostupRatings())
 	go webServer.Start(":8081")
 
 	// Start IMAP watcher if configured

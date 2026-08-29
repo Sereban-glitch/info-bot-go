@@ -169,6 +169,19 @@ func (s *CatalogStore) LookupBinding(name string) (Binding, bool) {
 	return b, ok
 }
 
+// AllBindings возвращает все привязки «название → слаг» (снимок).
+// Используется фоновым сбором рейтингов: органы, выбранные
+// реальными пользователями, обновляются в первую очередь.
+func (s *CatalogStore) AllBindings() []Binding {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Binding, 0, len(s.bindings))
+	for _, b := range s.bindings {
+		out = append(out, b)
+	}
+	return out
+}
+
 // FindBySlug возвращает орган каталога по слагу.
 func (s *CatalogStore) FindBySlug(slug string) (CatalogBody, bool) {
 	s.mu.RLock()

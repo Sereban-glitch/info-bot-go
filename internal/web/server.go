@@ -26,6 +26,7 @@ type Server struct {
 	directory *directory.Directory
 	dostup    *dostup.Client       // канал портала (может быть nil)
 	catalog   *dostup.CatalogStore // каталог органов (может быть nil)
+	ratings   *dostup.RatingsStore // рейтинги органов (может быть nil)
 }
 
 // NewServer creates a new web server.
@@ -46,9 +47,10 @@ func NewServer(
 }
 
 // SetDostup подключает канал портала (рейтинги органов + поиск по запитам).
-func (s *Server) SetDostup(client *dostup.Client, catalog *dostup.CatalogStore) {
+func (s *Server) SetDostup(client *dostup.Client, catalog *dostup.CatalogStore, ratings *dostup.RatingsStore) {
 	s.dostup = client
 	s.catalog = catalog
+	s.ratings = ratings
 }
 
 // Start starts the HTTP server on the given address (e.g. ":8080").
@@ -62,6 +64,7 @@ func (s *Server) Start(addr string) error {
 	mux.HandleFunc("/api/directory", corsMiddleware(s.authMiddleware(s.handleDirectory)))
 	mux.HandleFunc("/api/stats", corsMiddleware(s.authMiddleware(s.handleStats)))
 	mux.HandleFunc("/api/generate-template", corsMiddleware(s.authMiddleware(s.handleGenerateTemplate)))
+	mux.HandleFunc("/api/rating", corsMiddleware(s.handleRating)) // публичный: агрегаты без ПД
 	mux.HandleFunc("/api/body-stats", corsMiddleware(s.authMiddleware(s.handleBodyStats)))
 	mux.HandleFunc("/api/search-requests", corsMiddleware(s.authMiddleware(s.handleSearchRequests)))
 

@@ -39,11 +39,36 @@ var (
 	bodyStatsCache = map[string]bodyStatsEntry{}
 )
 
+// SetRatingsStore подключает персистентное хранилище рейтингов:
+// BodyStatsCached начинает обслуживаться из него (и писать в него).
+func (c *Client) SetRatingsStore(s *RatingsStore) {
+	c.ratings = s
+}
+
 // BodyStatsCached — рейтинг органа по слагу с кэшем (TTL 1 час).
 // online=false — только кэш, без запроса к порталу.
+// При подключённом RatingsStore кэш обслуживается из хранилища
+// (переживает рестарт) и ленивые выборки в него же пишутся.
 func (c *Client) BodyStatsCached(slug string, online bool) (*BodyStats, error) {
 	if slug == "" {
 		return nil, fmt.Errorf("dostup: пустой слаг для статистики")
+	}
+	if c.ratings != nil {
+		if st, ok := c.ratings.FreshStats(slug, bodyStatsTTL); ok {
+			return &st, nil
+		}
+		if !online {
+			return nil, fmt.Errorf("dostup: нет кэшированной статистики")
+		}
+		st, err := c.fetchBodyStats(slug)
+		if err != nil {
+			return nil, err
+		}
+		if err := c.ratings.SetAndSave(slug, *st); err != nil {
+			// данные вернём, но шум в лог не поднимаем — рейтинг не критичен
+			_ = err
+		}
+		return st, nil
 	}
 	bodyStatsMu.Lock()
 	if e, ok := bodyStatsCache[slug]; ok && time.Since(e.fetched) < bodyStatsTTL {
@@ -55,11 +80,25 @@ func (c *Client) BodyStatsCached(slug string, online bool) (*BodyStats, error) {
 	if !online {
 		return nil, fmt.Errorf("dostup: нет кэшированной статистики")
 	}
+	st, err := c.fetchBodyStats(slug)
+	if err != nil {
+		return nil, err
+	}
+	bodyStatsMu.Lock()
+	bodyStatsCache[slug] = bodyStatsEntry{stats: *st, fetched: time.Now()}
+	bodyStatsMu.Unlock()
+	return st, nil
+}
 
+// fetchBodyStats тянет статистику из фида органа.
+func (c *Client) fetchBodyStats(slug string) (*BodyStats, error) {
 	// Фид органа: { ..., "info": { requests_count, ... } }
 	page, code, err := c.get("/body/" + slug + "/feed.json")
 	if err != nil {
 		return nil, err
+	}
+	if isRateLimited(page) {
+		return nil, ErrRateLimited
 	}
 	if code != 200 {
 		return nil, fmt.Errorf("dostup: feed органа: HTTP %d", code)
@@ -93,6 +132,21 @@ func (s *BodyStats) OverduePct() int {
 		return 0
 	}
 	return s.Overdue * 100 / s.Requests
+}
+
+// RefreshBodyStats тянет статистику органа с портала без кэша и
+// складывает в хранилище рейтингов (без записи на диск — фоновый батч
+// сохраняет файл один раз в конце цикла). Ошибки — наверх, включая
+// ErrRateLimited (сигнал остановить батч).
+func (c *Client) RefreshBodyStats(slug string) (*BodyStats, error) {
+	st, err := c.fetchBodyStats(slug)
+	if err != nil {
+		return nil, err
+	}
+	if c.ratings != nil {
+		c.ratings.Set(slug, *st)
+	}
+	return st, nil
 }
 
 // SyncCatalog выкачивает полный каталог портала постранично.

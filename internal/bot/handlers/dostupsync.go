@@ -22,6 +22,7 @@ package handlers
 // Период: DOSTUP_SYNC_MINUTES (по умолчанию 20) + джиттер.
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -224,6 +225,9 @@ func (w *DostupSync) SyncNow(verbose bool) string {
 	// --- 4. Напоминания о просроченных гилках (строк минул) ---
 	w.remindOverdueThreads()
 
+	// --- 5. Рейтинговый батч: постепенный сбор статистики органов ---
+	w.collectRatingBatch()
+
 	if verbose {
 		if report.Len() == 0 {
 			report.WriteString("✅ Синхронізація: змін немає. ")
@@ -233,6 +237,60 @@ func (w *DostupSync) SyncNow(verbose bool) string {
 		return report.String()
 	}
 	return report.String()
+}
+
+// ratingBatchSize — сколько органов рейтинга обновляется за один цикл
+// синхронизации (20 минут + джиттер). Полный обход 2145 органов ≈ 18 часов.
+const ratingBatchSize = 40
+
+// collectRatingBatch — бережный фоновый сбор статистики органов для рейтинга.
+//
+// Портал хрупкий (май 2026 — потеря данных после сбоя), поэтому полный обход
+// 2145 органов НЕ делается за один раз: за цикл обновляется не более
+// ratingBatchSize органов, между запросами — вежливые паузы, при первом
+// же rate-limit батч останавливается до следующего цикла. Приоритеты:
+// биндинги пользователей → никогда не собранные → самые устаревшие.
+func (w *DostupSync) collectRatingBatch() {
+	if w.deps.DostupRatings == nil || w.deps.Dostup == nil || w.deps.DostupCatalog == nil {
+		return
+	}
+	cat := w.deps.DostupCatalog.Get()
+	if cat == nil || len(cat.Bodies) == 0 {
+		return
+	}
+	prefer := map[string]bool{}
+	for _, b := range w.deps.DostupCatalog.AllBindings() {
+		if b.Slug != "" {
+			prefer[b.Slug] = true
+		}
+	}
+	batch, total := w.deps.DostupRatings.NextBatch(cat.Bodies, prefer, ratingBatchSize)
+	if len(batch) == 0 {
+		return
+	}
+	okCount, errCount := 0, 0
+	for i, slug := range batch {
+		if i > 0 {
+			time.Sleep(time.Duration(1500+rand.Intn(500)) * time.Millisecond)
+		}
+		if _, err := w.deps.Dostup.RefreshBodyStats(slug); err != nil {
+			if errors.Is(err, dostup.ErrRateLimited) {
+				log.Printf("[RATING] rate-limit на %s — батч остановлен на %d из %d, продолжим в следующем цикле", slug, okCount, len(batch))
+				break
+			}
+			errCount++
+			if errCount <= 3 {
+				log.Printf("[RATING] %s: %v", slug, err)
+			}
+			continue // ошибка одного органа не роняет батч
+		}
+		okCount++
+	}
+	if err := w.deps.DostupRatings.Save(); err != nil {
+		log.Printf("[RATING] сохранение хранилища: %v", err)
+	}
+	covered := w.deps.DostupRatings.Count()
+	log.Printf("[RATING] batch: +%d (ошибок %d), covered %d/%d", okCount, errCount, covered, total)
 }
 
 // syncStatuses обходит все dostup-запросы, классифицирует последние

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -429,6 +431,116 @@ type BodyStatsResponse struct {
 	Overdue    int  `json:"overdue"`
 	OverduePct int  `json:"overduePct"`
 	Successful int  `json:"successful"`
+}
+
+// RatingItem — строка публичного рейтинга органов (только агрегаты, без ПД).
+type RatingItem struct {
+	Rank             int     `json:"rank"`
+	Slug             string  `json:"slug"`
+	Name             string  `json:"name"`
+	Region           string  `json:"region,omitempty"`
+	Index            int     `json:"index"` // «індекс відкритості» 0..100
+	Badge            string  `json:"badge"` // 🟢 / 🟡 / 🔴
+	Requests         int     `json:"requests"`
+	Successful       int     `json:"successful"`
+	Overdue          int     `json:"overdue"`
+	OverduePct       int     `json:"overduePct"`
+	AvgResponseHours float64 `json:"avgResponseHours,omitempty"` // наши данные, часов
+	ResponseSample   int     `json:"responseSample,omitempty"`   // сколько наших ответов учтено
+	PortalURL        string  `json:"portalUrl"`
+}
+
+// RatingResponse — ответ /api/rating.
+type RatingResponse struct {
+	Items     []RatingItem `json:"items"`
+	Total     int          `json:"total"`   // органов в рейтинге (≥5 запитів)
+	Covered   int          `json:"covered"` // по скольким органам есть данные
+	Catalog   int          `json:"catalog"` // всего органов в каталоге
+	FetchedAt string       `json:"fetchedAt,omitempty"`
+}
+
+// handleRating — GET /api/rating?sort=best|worst&q=&offset=&limit=:
+// публичный лидерборд открытости (агрегированные счётчики публичных органов,
+// ноль персональных данных). Поэтому эндпоинт НЕ обёрнут authMiddleware —
+// страница рейтинга работает и в обычном браузере, без Telegram.
+func (s *Server) handleRating(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{OK: false, Err: "method not allowed"})
+		return
+	}
+	if s.ratings == nil || s.catalog == nil {
+		writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: RatingResponse{Items: []RatingItem{}}})
+		return
+	}
+	sortParam := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort")))
+	if sortParam != "worst" {
+		sortParam = "best"
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	if offset < 0 {
+		offset = 0
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	cat := s.catalog.Get()
+	if cat == nil {
+		writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: RatingResponse{Items: []RatingItem{}}})
+		return
+	}
+	rows, total := s.ratings.Leaderboard(cat.Bodies, dostup.LeaderOptions{
+		Sort: sortParam, Query: q, Offset: offset, Limit: limit,
+	})
+
+	// Среднее время ответа — наши собственные данные (портал не отдаёт).
+	// Показываем только для органов с ≥ 2 ответами: одна цифра — не статистика.
+	timings := map[string]sentlog.BodyTiming{}
+	if s.sentLog != nil {
+		for name, t := range s.sentLog.AvgResponseHoursByBody() {
+			if t.Count >= 2 {
+				timings[name] = t
+			}
+		}
+	}
+
+	items := make([]RatingItem, 0, len(rows))
+	for _, row := range rows {
+		item := RatingItem{
+			Rank:       row.Rank,
+			Slug:       row.Slug,
+			Name:       row.Name,
+			Region:     row.Region,
+			Index:      row.Index,
+			Badge:      dostup.RatingBadge(row.Index),
+			Requests:   row.Requests,
+			Successful: row.Successful,
+			Overdue:    row.Overdue,
+			OverduePct: row.OverduePct,
+			PortalURL:  dostup.BaseURL + "/body/" + row.Slug,
+		}
+		if t, ok := timings[strings.ToLower(row.Name)]; ok {
+			item.AvgResponseHours = math.Round(t.Hours*10) / 10
+			item.ResponseSample = t.Count
+		}
+		items = append(items, item)
+	}
+
+	resp := RatingResponse{
+		Items:   items,
+		Total:   total,
+		Covered: s.ratings.Count(),
+		Catalog: len(cat.Bodies),
+	}
+	if latest := s.ratings.LatestFetch(); !latest.IsZero() {
+		resp.FetchedAt = latest.UTC().Format(time.RFC3339)
+	}
+	writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: resp})
 }
 
 // handleBodyStats — GET /api/body-stats?name=<орган>: рейтинг ответов органа.

@@ -272,6 +272,67 @@ small { font-size: 13px; color: var(--tg-hint); }
   box-shadow: 0 0 16px rgba(88,166,255,0.25);
 }
 
+/* ===================== RATING TAB ===================== */
+.rating-search {
+  width: 100%; box-sizing: border-box;
+  padding: 11px 14px; margin-bottom: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--tg-border);
+  background: var(--tg-card); color: var(--tg-text);
+  font-size: 14px; font-family: var(--font);
+  outline: none;
+}
+.rating-search:focus { border-color: var(--tg-button); }
+.rating-search::placeholder { color: var(--tg-hint); }
+.rating-legend {
+  display: flex; flex-wrap: wrap; gap: 6px 12px;
+  font-size: 12px; color: var(--tg-hint); margin: 2px 0 12px 0;
+}
+.rating-card {
+  display: flex; gap: 12px; align-items: flex-start;
+  background: var(--tg-card);
+  border: 1px solid var(--tg-border);
+  border-radius: var(--radius);
+  padding: 13px 14px; margin-bottom: var(--spacing-sm);
+}
+.rating-rank {
+  flex-shrink: 0; width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--tg-secondary-bg);
+  color: var(--tg-hint);
+  font-weight: 700; font-size: 14px;
+}
+.rating-rank.top { background: rgba(63,185,80,0.15); color: var(--c-green); }
+.rating-rank.bottom { background: rgba(248,81,73,0.15); color: var(--tg-destructive); }
+.rating-body { flex: 1 1 auto; min-width: 0; }
+.rating-name {
+  font-weight: 600; font-size: 14.5px; line-height: 1.35;
+  color: var(--tg-text); margin-bottom: 3px;
+  overflow-wrap: break-word;
+}
+.rating-index {
+  font-size: 13px; font-weight: 700; margin-bottom: 4px;
+}
+.rating-index.g { color: var(--c-green); }
+.rating-index.y { color: var(--c-yellow); }
+.rating-index.r { color: var(--tg-destructive); }
+.rating-meta { font-size: 12px; color: var(--tg-hint); line-height: 1.5; }
+.rating-meta a { color: var(--tg-link); text-decoration: none; }
+.rating-footnote {
+  font-size: 12px; color: var(--tg-hint); line-height: 1.55;
+  border-top: 1px solid var(--tg-border);
+  padding-top: 12px; margin-top: 4px;
+}
+.rating-more {
+  width: 100%; padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1.5px dashed var(--tg-border);
+  background: transparent; color: var(--tg-link);
+  font-size: 14px; font-weight: 600; font-family: var(--font);
+  cursor: pointer;
+}
+
 .request-list {
   display: flex; flex-direction: column; gap: var(--spacing-sm);
 }
@@ -879,6 +940,34 @@ small { font-size: 13px; color: var(--tg-hint); }
   </div>
 </div>
 
+<!-- ===================== TAB 5: РЕЙТИНГ ===================== -->
+<div class="tab-page" id="tab-rating">
+  <h2 style="margin-bottom:16px;">🏆 Рейтинг органів</h2>
+
+  <div class="filter-row">
+    <button class="filter-btn active" id="rating-sort-best" onclick="setRatingSort('best')">🟢 Найвідкритіші</button>
+    <button class="filter-btn" id="rating-sort-worst" onclick="setRatingSort('worst')">🔴 Антирейтинг</button>
+  </div>
+
+  <input class="rating-search" id="rating-search" type="search"
+         placeholder="🔍 Пошук органу..." oninput="onRatingSearch()">
+
+  <div class="rating-legend">
+    <span>🟢 відкритий (70+)</span>
+    <span>🟡 нестабільний (40–69)</span>
+    <span>🔴 ігнорує (&lt;40)</span>
+    <span>⏳ менше 5 запитів — без оцінки</span>
+  </div>
+
+  <div id="rating-list">
+    <div class="empty-state"><div class="empty-icon">⏳</div><p>Завантаження даних порталу...</p></div>
+  </div>
+
+  <button class="rating-more" id="rating-more" style="display:none;" onclick="loadRating(true)">Показати ще</button>
+
+  <div class="rating-footnote" id="rating-footnote"></div>
+</div>
+
 <!-- ===================== TAB BAR ===================== -->
 <div class="tab-bar" id="tab-bar">
   <button class="tab-bar-item active" data-tab="overview" onclick="switchTab('overview')">
@@ -892,6 +981,10 @@ small { font-size: 13px; color: var(--tg-hint); }
   <button class="tab-bar-item" data-tab="library" onclick="switchTab('library')">
     <span class="tab-icon">📚</span>
     <span class="tab-label">Бібліотека</span>
+  </button>
+  <button class="tab-bar-item" data-tab="rating" onclick="switchTab('rating')">
+    <span class="tab-icon">🏆</span>
+    <span class="tab-label">Рейтинг</span>
   </button>
   <button class="tab-bar-item" data-tab="profile" onclick="switchTab('profile')">
     <span class="tab-icon">👤</span>
@@ -995,6 +1088,115 @@ function switchTab(tabName) {
   if (tabName === 'requests') loadRequests();
   if (tabName === 'library') { loadTemplates(); }
   if (tabName === 'profile') loadProfile();
+  if (tabName === 'rating') loadRating(false);
+}
+
+/* ============================================
+   RATING TAB — публичный лидерборд открытости
+   Данные: /api/rating (публичный, без авторизации —
+   только агрегированные счётчики органов, ноль ПД).
+   Работает и в обычном браузере, без Telegram.
+   ============================================ */
+let ratingSort = 'best';
+let ratingQuery = '';
+let ratingOffset = 0;
+const RATING_PAGE = 20;
+let ratingHasMore = false;
+
+function setRatingSort(sort) {
+  if (ratingSort === sort) return;
+  ratingSort = sort;
+  document.getElementById('rating-sort-best').classList.toggle('active', sort === 'best');
+  document.getElementById('rating-sort-worst').classList.toggle('active', sort === 'worst');
+  ratingOffset = 0;
+  loadRating(false);
+}
+
+let ratingSearchTimer = null;
+function onRatingSearch() {
+  clearTimeout(ratingSearchTimer);
+  ratingSearchTimer = setTimeout(() => {
+    const q = document.getElementById('rating-search').value.trim();
+    if (q === ratingQuery) return;
+    ratingQuery = q;
+    ratingOffset = 0;
+    loadRating(false);
+  }, 350);
+}
+
+async function loadRating(append) {
+  const list = document.getElementById('rating-list');
+  const moreBtn = document.getElementById('rating-more');
+  if (!append) {
+    ratingOffset = 0;
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><p>Завантаження даних порталу...</p></div>';
+  }
+  try {
+    // Публичный эндпоинт: обычный fetch, без подписи — доступен из браузера.
+    const params = new URLSearchParams({ sort: ratingSort, offset: ratingOffset, limit: RATING_PAGE });
+    if (ratingQuery) params.set('q', ratingQuery);
+    const res = await fetch(API_BASE + '/rating?' + params.toString());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    if (!json.ok || !json.data) throw new Error(json.error || 'некоректна відповідь');
+
+    const d = json.data;
+    const items = d.items || [];
+    ratingHasMore = (ratingOffset + items.length) < d.total;
+
+    if (!append) list.innerHTML = '';
+    if (!items.length && !append) {
+      const collecting = d.covered < d.catalog;
+      list.innerHTML = collecting
+        ? '<div class="empty-state"><div class="empty-icon">⏳</div><p>Ще збираємо дані</p>' +
+          '<p style="font-size:13px; margin-top:6px;">Обійдено ' + d.covered + ' із ' + d.catalog +
+          ' органів порталу. Рейтинг наповнюється поступово, малими порціями — щоб не навантажувати портал.</p></div>'
+        : '<div class="empty-state"><div class="empty-icon">🔍</div><p>Нічого не знайдено</p>' +
+          '<p style="font-size:13px; margin-top:6px;">Спробуйте інший запит або режим сортування.</p></div>';
+    }
+    for (const it of items) {
+      list.appendChild(ratingCardEl(it));
+    }
+    moreBtn.style.display = ratingHasMore ? 'block' : 'none';
+    ratingOffset += items.length;
+
+    // Подпись честности: источник + свежесть
+    const foot = document.getElementById('rating-footnote');
+    let f = '📊 Дані: ' + d.covered + ' із ' + d.catalog + ' органів · рейтинг: ' + d.total +
+      ' з 5+ запитами · джерело: <a href="https://dostup.org.ua" target="_blank" rel="noopener">«Доступ до правди»</a>';
+    if (d.fetchedAt) f += ' · станом на ' + new Date(d.fetchedAt).toLocaleDateString('uk-UA');
+    foot.innerHTML = f;
+  } catch (e) {
+    if (!append) {
+      list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div>' +
+        '<p>Дані рейтингу недоступні</p>' +
+        '<p style="font-size:13px; margin-top:6px;">Спробуйте оновити сторінку.</p></div>';
+    }
+    console.error('rating:', e);
+  }
+}
+
+function ratingCardEl(it) {
+  const card = document.createElement('div');
+  card.className = 'rating-card';
+  const idxClass = it.index >= 70 ? 'g' : (it.index >= 40 ? 'y' : 'r');
+  const rankClass = it.rank <= 3 && ratingSort === 'best' ? 'top'
+    : (it.rank <= 3 && ratingSort === 'worst' ? 'bottom' : '');
+
+  let meta = 'запитів ' + it.requests + ' · по суті ' + it.successful + ' · прострочено ' + it.overduePct + '%';
+  if (it.avgResponseHours) {
+    meta += '<br>⏱ сер. час відповіді за нашими даними: ' + it.avgResponseHours + ' год (n=' + it.responseSample + ')';
+  }
+  meta += '<br><a href="' + it.portalUrl + '" target="_blank" rel="noopener">Відкрити на порталі ↗</a>';
+
+  card.innerHTML =
+    '<div class="rating-rank ' + rankClass + '">' + it.rank + '</div>' +
+    '<div class="rating-body">' +
+      '<div class="rating-name">' + escHtml(it.name) + '</div>' +
+      '<div class="rating-index ' + idxClass + '">' + it.badge + ' Індекс відкритості: ' + it.index + '/100</div>' +
+      '<div class="rating-meta">' + meta + '</div>' +
+    '</div>';
+  return card;
 }
 
 /* ============================================

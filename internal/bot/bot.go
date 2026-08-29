@@ -38,6 +38,7 @@ type Bot struct {
 	sync          *handlers.DostupSync
 	dostup        *dostup.Client       // канал «Доступ до правды»
 	dostupCatalog *dostup.CatalogStore // локальный каталог органов
+	dostupRatings *dostup.RatingsStore // рейтинги органов портала
 }
 
 // New creates a new Bot with all dependencies.
@@ -121,6 +122,12 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 		deps.DostupCatalog.Load()
 		botInst.dostup = dc
 		botInst.dostupCatalog = deps.DostupCatalog
+		// Персистентні рейтинги органів (індекс відкритості + лідерборд)
+		ratingsStore := dostup.NewRatingsStore(filepath.Join(cfg.DostupSessionFileDir(), "dostup_ratings.json"))
+		ratingsStore.Load()
+		dc.SetRatingsStore(ratingsStore)
+		deps.DostupRatings = ratingsStore
+		botInst.dostupRatings = ratingsStore
 		// Гилки запросов для уточнений (followup)
 		deps.FollowUps = session.NewFollowUpThreads(filepath.Join(sessDir(), "followup_threads.json"))
 		// Фоновая синхронизация бот ↔ портал
@@ -184,6 +191,9 @@ func (b *Bot) Dostup() *dostup.Client { return b.dostup }
 
 // DostupCatalog — локальный каталог распорядителей портала.
 func (b *Bot) DostupCatalog() *dostup.CatalogStore { return b.dostupCatalog }
+
+// DostupRatings — персистентные рейтинги органов портала.
+func (b *Bot) DostupRatings() *dostup.RatingsStore { return b.dostupRatings }
 
 // sessDir — каталог сессий (для рабочих файлов).
 func sessDir() string {

@@ -63,7 +63,8 @@ type Client struct {
 	sessionFile  string // путь к JSON-файлу для персистентности cookies
 	email        string // логин (email) для авто-релейина
 	password     string
-	lastLocation string // Location из последнего ответа (для ручных редиректов)
+	lastLocation string        // Location из последнего ответа (для ручных редиректов)
+	ratings      *RatingsStore // персистентные рейтинги органов (может быть nil)
 }
 
 // New создаёт клиент. sessionFile может быть пустым — тогда сессия живёт
