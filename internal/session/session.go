@@ -1,120 +1,120 @@
 package session
 
 import (
-        "encoding/json"
-        "fmt"
-        "os"
-        "path/filepath"
-        "strings"
-        "sync"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 )
 
 // Profile holds user personal data.
 type Profile struct {
-        FirstName     string `json:"firstName,omitempty"`
-        LastName      string `json:"lastName,omitempty"`
-        MiddleName    string `json:"middleName,omitempty"`
-        PostalAddress string `json:"postalAddress,omitempty"`
-        Email         string `json:"email,omitempty"`
-        FullName      string `json:"fullName,omitempty"`
+	FirstName     string `json:"firstName,omitempty"`
+	LastName      string `json:"lastName,omitempty"`
+	MiddleName    string `json:"middleName,omitempty"`
+	PostalAddress string `json:"postalAddress,omitempty"`
+	Email         string `json:"email,omitempty"`
+	FullName      string `json:"fullName,omitempty"`
 }
 
 // Draft holds a request being composed.
 type Draft struct {
-        RecipientName      string `json:"recipientName,omitempty"`
-        RecipientEmail     string `json:"recipientEmail,omitempty"`
-        Subject            string `json:"subject,omitempty"`
-        Body               string `json:"body,omitempty"`
-        UseSharedMailbox   bool   `json:"useSharedMailbox,omitempty"`
-        OSINTSuggestedName string `json:"osintSuggestedName,omitempty"`
-        DostupSlug         string `json:"dostupSlug,omitempty"` // выбранный распорядитель на dostup.org.ua
+	RecipientName      string `json:"recipientName,omitempty"`
+	RecipientEmail     string `json:"recipientEmail,omitempty"`
+	Subject            string `json:"subject,omitempty"`
+	Body               string `json:"body,omitempty"`
+	UseSharedMailbox   bool   `json:"useSharedMailbox,omitempty"`
+	OSINTSuggestedName string `json:"osintSuggestedName,omitempty"`
+	DostupSlug         string `json:"dostupSlug,omitempty"` // выбранный распорядитель на dostup.org.ua
 }
 
 // PRDraft holds copilot draft.
 type PRDraft struct {
-        Text        string `json:"text,omitempty"`
-        PhotoID     string `json:"photoId,omitempty"`
-        Tone        string `json:"tone,omitempty"`
-        FinalText   string `json:"finalText,omitempty"`
-        IsAnonymous bool   `json:"isAnonymous,omitempty"`
-        AIVerdict   string `json:"aiVerdict,omitempty"`
+	Text        string `json:"text,omitempty"`
+	PhotoID     string `json:"photoId,omitempty"`
+	Tone        string `json:"tone,omitempty"`
+	FinalText   string `json:"finalText,omitempty"`
+	IsAnonymous bool   `json:"isAnonymous,omitempty"`
+	AIVerdict   string `json:"aiVerdict,omitempty"`
 }
 
 // HistoryEntry tracks a sent request.
 type HistoryEntry struct {
-        Date            string `json:"date"`
-        To              string `json:"to"`
-        Subject         string `json:"subject"`
-        MessageID       string `json:"messageId"`
-        ChatID          int64  `json:"chatId,omitempty"`
-        ReplyReceivedAt string `json:"replyReceivedAt,omitempty"`
+	Date            string `json:"date"`
+	To              string `json:"to"`
+	Subject         string `json:"subject"`
+	MessageID       string `json:"messageId"`
+	ChatID          int64  `json:"chatId,omitempty"`
+	ReplyReceivedAt string `json:"replyReceivedAt,omitempty"`
 }
 
 // FollowUpDraft — черновик уточнения (follow-up) в гилку существующего запроса.
 type FollowUpDraft struct {
-        RequestSlug string `json:"requestSlug,omitempty"` // слаг запроса на портале
-        Body        string `json:"body,omitempty"`        // текст уточнения
-        Subject     string `json:"subject,omitempty"`     // тема исходного запроса (для карточки)
-        Organ       string `json:"organ,omitempty"`       // орган
-        URL         string `json:"url,omitempty"`         // публичная ссылка на гилку
-        PickIdx     int    `json:"pickIdx,omitempty"`     // выбранный индекс в списке гилок
+	RequestSlug string `json:"requestSlug,omitempty"` // слаг запроса на портале
+	Body        string `json:"body,omitempty"`        // текст уточнения
+	Subject     string `json:"subject,omitempty"`     // тема исходного запроса (для карточки)
+	Organ       string `json:"organ,omitempty"`       // орган
+	URL         string `json:"url,omitempty"`         // публичная ссылка на гилку
+	PickIdx     int    `json:"pickIdx,omitempty"`     // выбранный индекс в списке гилок
 }
 
 // SessionData is the per-user session.
 type SessionData struct {
-        Step     string          `json:"step"`
-        Profile  Profile         `json:"profile"`
-        Draft    Draft           `json:"draft"`
-        PRDraft  *PRDraft        `json:"prDraft,omitempty"`
-        History  []HistoryEntry  `json:"history,omitempty"`
-        FollowUp *FollowUpDraft  `json:"followUp,omitempty"` // черновик уточнения в гилку
+	Step     string         `json:"step"`
+	Profile  Profile        `json:"profile"`
+	Draft    Draft          `json:"draft"`
+	PRDraft  *PRDraft       `json:"prDraft,omitempty"`
+	History  []HistoryEntry `json:"history,omitempty"`
+	FollowUp *FollowUpDraft `json:"followUp,omitempty"` // черновик уточнения в гилку
 
-        // DostupDisclosureShown — владелец один раз увидел дисклеймер
-        // о публичности портала «Доступ до правди» (что публикуется открыто,
-        // что маскирует портал). Флаг персистентный: повторно не показываем.
-        DostupDisclosureShown bool `json:"dostupDisclosureShown,omitempty"`
+	// DostupDisclosureShown — владелец один раз увидел дисклеймер
+	// о публичности портала «Доступ до правди» (что публикуется открыто,
+	// что маскирует портал). Флаг персистентный: повторно не показываем.
+	DostupDisclosureShown bool `json:"dostupDisclosureShown,omitempty"`
 }
 
 // NewSessionData returns a blank session.
 func NewSessionData() *SessionData {
-        return &SessionData{
-                Step:    "idle",
-                Profile: Profile{},
-                Draft:   Draft{},
-                PRDraft: nil,
-                History: nil,
-                FollowUp: nil,
-        }
+	return &SessionData{
+		Step:     "idle",
+		Profile:  Profile{},
+		Draft:    Draft{},
+		PRDraft:  nil,
+		History:  nil,
+		FollowUp: nil,
+	}
 }
 
 // ProfileDisplayName returns a displayable name from the profile.
 func ProfileDisplayName(p Profile) string {
-        if p.LastName != "" || p.FirstName != "" {
-                parts := []string{}
-                if p.LastName != "" {
-                        parts = append(parts, p.LastName)
-                }
-                if p.FirstName != "" {
-                        parts = append(parts, p.FirstName)
-                }
-                if p.MiddleName != "" {
-                        parts = append(parts, p.MiddleName)
-                }
-                name := ""
-                for i, s := range parts {
-                        if i > 0 {
-                                name += " "
-                        }
-                        name += s
-                }
-                return name
-        }
-        return p.FullName
+	if p.LastName != "" || p.FirstName != "" {
+		parts := []string{}
+		if p.LastName != "" {
+			parts = append(parts, p.LastName)
+		}
+		if p.FirstName != "" {
+			parts = append(parts, p.FirstName)
+		}
+		if p.MiddleName != "" {
+			parts = append(parts, p.MiddleName)
+		}
+		name := ""
+		for i, s := range parts {
+			if i > 0 {
+				name += " "
+			}
+			name += s
+		}
+		return name
+	}
+	return p.FullName
 }
 
 // IsProfileReady returns true if the profile has at least a name.
 func IsProfileReady(p Profile) bool {
-        return (p.FirstName != "" && p.LastName != "") || p.FullName != ""
+	return (p.FirstName != "" && p.LastName != "") || p.FullName != ""
 }
 
 // SignatureName returns the name used to sign request letters.
@@ -125,230 +125,230 @@ func IsProfileReady(p Profile) bool {
 // or placeholder name: under ст. 19 ЗУ «Про доступ до публічної
 // інформації» the requester must be named.
 func SignatureName(p Profile) string {
-        if fn := strings.TrimSpace(p.FullName); fn != "" {
-                return fn
-        }
-        return strings.TrimSpace(ProfileDisplayName(p))
+	if fn := strings.TrimSpace(p.FullName); fn != "" {
+		return fn
+	}
+	return strings.TrimSpace(ProfileDisplayName(p))
 }
 
 // FollowUpThread — гилка запроса, доступная для уточнений
 // (следим за ответами и предлагаем дописать).
 type FollowUpThread struct {
-        Slug          string `json:"slug"`          // слаг запроса
-        Subject       string `json:"subject"`       // тема
-        Organ         string `json:"organ"`         // орган
-        URL           string `json:"url"`           // публичная ссылка
-        LastRemindAt  string `json:"lastRemindAt"`  // ISO-время последнего напоминания
-        RepliedAt     string `json:"repliedAt"`     // ISO-время ответа по существу (если был)
-        FollowUpAt    string `json:"followUpAt"`    // ISO-время последнего дописывания
+	Slug         string `json:"slug"`         // слаг запроса
+	Subject      string `json:"subject"`      // тема
+	Organ        string `json:"organ"`        // орган
+	URL          string `json:"url"`          // публичная ссылка
+	LastRemindAt string `json:"lastRemindAt"` // ISO-время последнего напоминания
+	RepliedAt    string `json:"repliedAt"`    // ISO-время ответа по существу (если был)
+	FollowUpAt   string `json:"followUpAt"`   // ISO-время последнего дописывания
 }
 
 // FollowUpThreads — персистентное хранилище гилок по пользователям
 // (файл followup_threads.json в каталоге сессий).
 type FollowUpThreads struct {
-        mu   sync.Mutex
-        path string
-        data map[int64][]FollowUpThread
+	mu   sync.Mutex
+	path string
+	data map[int64][]FollowUpThread
 }
 
 // NewFollowUpThreads создаёт хранилище (path может быть пустым — только память).
 func NewFollowUpThreads(path string) *FollowUpThreads {
-        t := &FollowUpThreads{path: path, data: map[int64][]FollowUpThread{}}
-        t.load()
-        return t
+	t := &FollowUpThreads{path: path, data: map[int64][]FollowUpThread{}}
+	t.load()
+	return t
 }
 
 func (t *FollowUpThreads) load() {
-        if t.path == "" {
-                return
-        }
-        raw, err := os.ReadFile(t.path)
-        if err != nil {
-                return
-        }
-        var data map[int64][]FollowUpThread
-        if err := json.Unmarshal(raw, &data); err == nil {
-                t.data = data
-        }
+	if t.path == "" {
+		return
+	}
+	raw, err := os.ReadFile(t.path)
+	if err != nil {
+		return
+	}
+	var data map[int64][]FollowUpThread
+	if err := json.Unmarshal(raw, &data); err == nil {
+		t.data = data
+	}
 }
 
 func (t *FollowUpThreads) save() {
-        if t.path == "" {
-                return
-        }
-        raw, err := json.MarshalIndent(t.data, "", " ")
-        if err != nil {
-                return
-        }
-        tmp := t.path + ".tmp"
-        if os.WriteFile(tmp, raw, 0600) == nil {
-                _ = os.Rename(tmp, t.path)
-        }
+	if t.path == "" {
+		return
+	}
+	raw, err := json.MarshalIndent(t.data, "", " ")
+	if err != nil {
+		return
+	}
+	tmp := t.path + ".tmp"
+	if os.WriteFile(tmp, raw, 0600) == nil {
+		_ = os.Rename(tmp, t.path)
+	}
 }
 
 // List — гилки пользователя (свежие сверху, максимум limit).
 func (t *FollowUpThreads) List(userID int64, limit int) []FollowUpThread {
-        t.mu.Lock()
-        defer t.mu.Unlock()
-        list := t.data[userID]
-        if limit > 0 && len(list) > limit {
-                list = list[:limit]
-        }
-        out := make([]FollowUpThread, len(list))
-        copy(out, list)
-        return out
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	list := t.data[userID]
+	if limit > 0 && len(list) > limit {
+		list = list[:limit]
+	}
+	out := make([]FollowUpThread, len(list))
+	copy(out, list)
+	return out
 }
 
 // Upsert добавляет/обновляет гилку (по слагу) наверху списка.
 func (t *FollowUpThreads) Upsert(userID int64, th FollowUpThread) {
-        t.mu.Lock()
-        defer t.mu.Unlock()
-        list := t.data[userID]
-        out := []FollowUpThread{th}
-        for _, e := range list {
-                if e.Slug != th.Slug {
-                        out = append(out, e)
-                }
-        }
-        if len(out) > 30 {
-                out = out[:30]
-        }
-        t.data[userID] = out
-        t.save()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	list := t.data[userID]
+	out := []FollowUpThread{th}
+	for _, e := range list {
+		if e.Slug != th.Slug {
+			out = append(out, e)
+		}
+	}
+	if len(out) > 30 {
+		out = out[:30]
+	}
+	t.data[userID] = out
+	t.save()
 }
 
 // MarkReplied фиксирует ответ по существу в гилке.
 func (t *FollowUpThreads) MarkReplied(userID int64, slug, at string) {
-        t.mu.Lock()
-        defer t.mu.Unlock()
-        list := t.data[userID]
-        for i := range list {
-                if list[i].Slug == slug {
-                        list[i].RepliedAt = at
-                }
-        }
-        t.data[userID] = list
-        t.save()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	list := t.data[userID]
+	for i := range list {
+		if list[i].Slug == slug {
+			list[i].RepliedAt = at
+		}
+	}
+	t.data[userID] = list
+	t.save()
 }
 
 // MarkFollowUpSent фиксирует время дописывания в гилку.
 func (t *FollowUpThreads) MarkFollowUpSent(userID int64, slug, at string) {
-        t.mu.Lock()
-        defer t.mu.Unlock()
-        list := t.data[userID]
-        for i := range list {
-                if list[i].Slug == slug {
-                        list[i].FollowUpAt = at
-                        list[i].LastRemindAt = at // напоминание сбрасываем
-                }
-        }
-        t.data[userID] = list
-        t.save()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	list := t.data[userID]
+	for i := range list {
+		if list[i].Slug == slug {
+			list[i].FollowUpAt = at
+			list[i].LastRemindAt = at // напоминание сбрасываем
+		}
+	}
+	t.data[userID] = list
+	t.save()
 }
 
 // MarkReminded фиксирует время напоминания «строк минул».
 func (t *FollowUpThreads) MarkReminded(userID int64, slug, at string) {
-        t.mu.Lock()
-        defer t.mu.Unlock()
-        list := t.data[userID]
-        for i := range list {
-                if list[i].Slug == slug {
-                        list[i].LastRemindAt = at
-                }
-        }
-        t.data[userID] = list
-        t.save()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	list := t.data[userID]
+	for i := range list {
+		if list[i].Slug == slug {
+			list[i].LastRemindAt = at
+		}
+	}
+	t.data[userID] = list
+	t.save()
 }
 
 // FileStore implements file-based session storage.
 type FileStore struct {
-        dir   string
-        mu    sync.RWMutex
-        cache map[string]*SessionData
+	dir   string
+	mu    sync.RWMutex
+	cache map[string]*SessionData
 }
 
 // NewFileStore creates a new file-based session store.
 func NewFileStore(dir string) (*FileStore, error) {
-        if err := os.MkdirAll(dir, 0755); err != nil {
-                return nil, err
-        }
-        return &FileStore{
-                dir:   dir,
-                cache: make(map[string]*SessionData),
-        }, nil
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, err
+	}
+	return &FileStore{
+		dir:   dir,
+		cache: make(map[string]*SessionData),
+	}, nil
 }
 
 // Get returns session data for the given key, loading from file if needed.
 func (s *FileStore) Get(key string) (*SessionData, error) {
-        s.mu.RLock()
-        if data, ok := s.cache[key]; ok {
-                s.mu.RUnlock()
-                return data, nil
-        }
-        s.mu.RUnlock()
+	s.mu.RLock()
+	if data, ok := s.cache[key]; ok {
+		s.mu.RUnlock()
+		return data, nil
+	}
+	s.mu.RUnlock()
 
-        // Load from file
-        path := filepath.Join(s.dir, key+".json")
-        data, err := s.loadData(path)
-        if err != nil {
-                // Return new empty session
-                newData := NewSessionData()
-                s.mu.Lock()
-                s.cache[key] = newData
-                s.mu.Unlock()
-                return newData, nil
-        }
+	// Load from file
+	path := filepath.Join(s.dir, key+".json")
+	data, err := s.loadData(path)
+	if err != nil {
+		// Return new empty session
+		newData := NewSessionData()
+		s.mu.Lock()
+		s.cache[key] = newData
+		s.mu.Unlock()
+		return newData, nil
+	}
 
-        s.mu.Lock()
-        s.cache[key] = data
-        s.mu.Unlock()
-        return data, nil
+	s.mu.Lock()
+	s.cache[key] = data
+	s.mu.Unlock()
+	return data, nil
 }
 
 // Set saves session data for the given key.
 func (s *FileStore) Set(key string, data *SessionData) error {
-        s.mu.Lock()
-        s.cache[key] = data
-        s.mu.Unlock()
+	s.mu.Lock()
+	s.cache[key] = data
+	s.mu.Unlock()
 
-        path := filepath.Join(s.dir, key+".json")
-        return s.saveData(path, data)
+	path := filepath.Join(s.dir, key+".json")
+	return s.saveData(path, data)
 }
 
 // Close flushes any pending data.
 func (s *FileStore) Close() error {
-        s.mu.Lock()
-        defer s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-        for key, data := range s.cache {
-                path := filepath.Join(s.dir, key+".json")
-                _ = s.saveData(path, data)
-        }
-        return nil
+	for key, data := range s.cache {
+		path := filepath.Join(s.dir, key+".json")
+		_ = s.saveData(path, data)
+	}
+	return nil
 }
 
 func (s *FileStore) loadData(path string) (*SessionData, error) {
-        raw, err := os.ReadFile(path)
-        if err != nil {
-                return nil, err
-        }
-        var data SessionData
-        if err := json.Unmarshal(raw, &data); err != nil {
-                return nil, err
-        }
-        return &data, nil
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var data SessionData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return nil, err
+	}
+	return &data, nil
 }
 
 func (s *FileStore) saveData(path string, data *SessionData) error {
-        raw, err := json.MarshalIndent(data, "", "  ")
-        if err != nil {
-                return err
-        }
-        // 0600: session files contain PII (name, email, postal address).
-        return os.WriteFile(path, raw, 0600)
+	raw, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	// 0600: session files contain PII (name, email, postal address).
+	return os.WriteFile(path, raw, 0600)
 }
 
 // SessionKey generates a session key from a Telegram user ID.
 func SessionKey(userID int64) string {
-        return fmt.Sprintf("user-%d", userID)
+	return fmt.Sprintf("user-%d", userID)
 }
