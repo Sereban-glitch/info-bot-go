@@ -1,6 +1,6 @@
 module info-bot-go
 
-go 1.19
+go 1.21
 
 require (
 	github.com/emersion/go-imap v1.2.1

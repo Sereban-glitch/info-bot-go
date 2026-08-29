@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"time"
 
 	"info-bot-go/internal/ai"
 	"info-bot-go/internal/config"
@@ -27,6 +28,7 @@ type Server struct {
 	dostup    *dostup.Client       // канал портала (может быть nil)
 	catalog   *dostup.CatalogStore // каталог органов (может быть nil)
 	ratings   *dostup.RatingsStore // рейтинги органов (может быть nil)
+	limits    *apiLimiters         // нормы частоты /api/* (ТЗ №4, D1)
 }
 
 // NewServer creates a new web server.
@@ -43,6 +45,7 @@ func NewServer(
 		sentLog:   sentLog,
 		gemini:    gemini,
 		directory: dir,
+		limits:    newAPILimiters(cfg.APIRateLimitPublic, cfg.APIRateLimitAuth, cfg.APIRateLimitGenerate),
 	}
 }
 
@@ -57,16 +60,23 @@ func (s *Server) SetDostup(client *dostup.Client, catalog *dostup.CatalogStore, 
 func (s *Server) Start(addr string) error {
 	mux := http.NewServeMux()
 
+	// Порядок обёрток (снаружи внутрь): CORS → rate limit → подпись → обработчик.
+	// Лимит стоит ДО проверки подписи: HMAC-подпись тоже стоит вычислений,
+	// и флуд с одного IP отсекается раньше дорогостоящей работы.
+	pub := s.rateLimitMiddleware(s.limits.public, "pub")
+	aut := s.rateLimitMiddleware(s.limits.auth, "auth")
+	gen := s.rateLimitMiddleware(s.limits.generate, "gen")
+
 	// API routes
-	mux.HandleFunc("/api/me", corsMiddleware(s.authMiddleware(s.handleMe)))
-	mux.HandleFunc("/api/requests", corsMiddleware(s.authMiddleware(s.handleRequests)))
-	mux.HandleFunc("/api/templates", corsMiddleware(s.authMiddleware(s.handleTemplates)))
-	mux.HandleFunc("/api/directory", corsMiddleware(s.authMiddleware(s.handleDirectory)))
-	mux.HandleFunc("/api/stats", corsMiddleware(s.authMiddleware(s.handleStats)))
-	mux.HandleFunc("/api/generate-template", corsMiddleware(s.authMiddleware(s.handleGenerateTemplate)))
-	mux.HandleFunc("/api/rating", corsMiddleware(s.handleRating)) // публичный: агрегаты без ПД
-	mux.HandleFunc("/api/body-stats", corsMiddleware(s.authMiddleware(s.handleBodyStats)))
-	mux.HandleFunc("/api/search-requests", corsMiddleware(s.authMiddleware(s.handleSearchRequests)))
+	mux.HandleFunc("/api/me", s.corsMiddleware(aut(s.authMiddleware(s.handleMe))))
+	mux.HandleFunc("/api/requests", s.corsMiddleware(aut(s.authMiddleware(s.handleRequests))))
+	mux.HandleFunc("/api/templates", s.corsMiddleware(aut(s.authMiddleware(s.handleTemplates))))
+	mux.HandleFunc("/api/directory", s.corsMiddleware(aut(s.authMiddleware(s.handleDirectory))))
+	mux.HandleFunc("/api/stats", s.corsMiddleware(aut(s.authMiddleware(s.handleStats))))
+	mux.HandleFunc("/api/generate-template", s.corsMiddleware(gen(s.authMiddleware(s.handleGenerateTemplate))))
+	mux.HandleFunc("/api/rating", s.corsMiddleware(pub(s.handleRating))) // публичный: агрегаты без ПД
+	mux.HandleFunc("/api/body-stats", s.corsMiddleware(aut(s.authMiddleware(s.handleBodyStats))))
+	mux.HandleFunc("/api/search-requests", s.corsMiddleware(aut(s.authMiddleware(s.handleSearchRequests))))
 
 	// Static files (mini-app HTML)
 	staticFS, err := fs.Sub(staticFiles, "static")
@@ -75,31 +85,22 @@ func (s *Server) Start(addr string) error {
 	} else {
 		fileServer := http.FileServer(http.FS(staticFS))
 		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
 			fileServer.ServeHTTP(w, r)
 		}))
 	}
 
-	log.Printf("[WEB] Starting HTTP server on %s", addr)
+	log.Printf("[WEB] Starting HTTP server on %s (rate limits: public=%d/min, auth bucket=%d/min, generate=%d/min)",
+		addr, s.cfg.APIRateLimitPublic, s.cfg.APIRateLimitAuth, s.cfg.APIRateLimitGenerate)
 
 	handler := loggingMiddleware(mux)
-	return http.ListenAndServe(addr, handler)
-}
-
-// corsMiddleware adds CORS headers for development.
-func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Init-Data, X-User-ID, Authorization")
-
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		next(w, r)
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      handler,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 120 * time.Second, // щедро: генерация шаблона с ИИ может занять десятки секунд
+		IdleTimeout:  120 * time.Second,
 	}
+	return srv.ListenAndServe()
 }
 
 // loggingMiddleware logs all HTTP requests.

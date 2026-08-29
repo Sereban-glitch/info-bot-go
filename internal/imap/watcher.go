@@ -16,6 +16,7 @@ import (
 
 	tb "gopkg.in/telebot.v3"
 
+	"info-bot-go/internal/safego"
 	"info-bot-go/internal/sentlog"
 	"info-bot-go/internal/stats"
 )
@@ -74,7 +75,8 @@ func (w *Watcher) Status() (enabled bool, intervalMin int, lastScan string, last
 	return true, int(w.interval.Minutes()), ls, w.lastCount
 }
 
-// Start begins the IMAP polling loop.
+// Start begins the IMAP polling loop. Каждое сканирование защищено
+// safego: паника одной проверки почты не останавливает опрос (ТЗ №4, D3).
 func (w *Watcher) Start(bot *tb.Bot) {
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
@@ -82,7 +84,7 @@ func (w *Watcher) Start(bot *tb.Bot) {
 	// Initial scan after a short delay
 	select {
 	case <-time.After(15 * time.Second):
-		w.scanOnce(bot)
+		safego.Run("imap-scan", func() { w.scanOnce(bot) })
 	case <-w.stopCh:
 		return
 	}
@@ -90,7 +92,7 @@ func (w *Watcher) Start(bot *tb.Bot) {
 	for {
 		select {
 		case <-ticker.C:
-			w.scanOnce(bot)
+			safego.Run("imap-scan", func() { w.scanOnce(bot) })
 		case <-w.stopCh:
 			return
 		}

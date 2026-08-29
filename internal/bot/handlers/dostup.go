@@ -20,6 +20,7 @@ import (
 	tb "gopkg.in/telebot.v3"
 
 	"info-bot-go/internal/dostup"
+	"info-bot-go/internal/safego"
 	"info-bot-go/internal/sentlog"
 	"info-bot-go/internal/session"
 )
@@ -543,10 +544,10 @@ func (m *DostupModule) handleSync(c tb.Context) error {
 		return c.Send("⚠️ Синхронізація не активна (канал не налаштований).")
 	}
 	_ = c.Send("🔄 Синхронізуюся з порталом...")
-	go func() {
+	safego.Go("sync-now", func() {
 		report := m.deps.DostupSync.SyncNow(true)
 		_, _ = m.bot.Send(c.Chat(), report)
-	}()
+	})
 	return nil
 }
 

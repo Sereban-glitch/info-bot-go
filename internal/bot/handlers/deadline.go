@@ -7,6 +7,7 @@ import (
 
 	tb "gopkg.in/telebot.v3"
 
+	"info-bot-go/internal/safego"
 	"info-bot-go/internal/sentlog"
 )
 
@@ -75,7 +76,8 @@ func (m *DeadlineModule) handleDeadline(c tb.Context) error {
 }
 
 // runChecker periodically checks for approaching/expired deadlines
-// and notifies users proactively.
+// and notifies users proactively. Каждая проверка защищена safego:
+// паника одной проверки не останавливает часовой тикер (ТЗ №4, D3).
 func (m *DeadlineModule) runChecker() {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
@@ -84,7 +86,7 @@ func (m *DeadlineModule) runChecker() {
 	time.Sleep(30 * time.Second)
 
 	for range ticker.C {
-		m.checkDeadlines()
+		safego.Run("deadline-check", m.checkDeadlines)
 	}
 }
 

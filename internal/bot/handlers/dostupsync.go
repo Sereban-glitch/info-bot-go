@@ -32,6 +32,7 @@ import (
 	tb "gopkg.in/telebot.v3"
 
 	"info-bot-go/internal/dostup"
+	"info-bot-go/internal/safego"
 	"info-bot-go/internal/sentlog"
 )
 
@@ -60,10 +61,18 @@ func (w *DostupSync) SetFollowUpModule(fu *FollowUpModule) {
 }
 
 // Start запускает цикл: первая синхронизация через 15 секунд после старта.
+// Каждая итерация защищена safego: паника в одной итерации не убивает
+// цикл — она пишется в журнал со стеком, а следующий тик работает дальше.
 func (w *DostupSync) Start() {
 	interval := 20 * time.Minute
 	if m := w.deps.Cfg.DostupSyncMinutes; m > 0 {
 		interval = time.Duration(m) * time.Minute
+	}
+	tick := func() {
+		safego.Run("dostup-sync", func() {
+			w.refreshCatalogIfNeeded()
+			w.SyncNow(false)
+		})
 	}
 	go func() {
 		defer close(w.stopped)
@@ -72,14 +81,12 @@ func (w *DostupSync) Start() {
 		case <-w.stop:
 			return
 		}
-		w.refreshCatalogIfNeeded()
-		w.SyncNow(false)
+		tick()
 		for {
 			jitter := time.Duration(rand.Int63n(int64(interval / 4)))
 			select {
 			case <-time.After(interval + jitter):
-				w.refreshCatalogIfNeeded()
-				w.SyncNow(false)
+				tick()
 			case <-w.stop:
 				return
 			}

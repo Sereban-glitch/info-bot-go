@@ -66,6 +66,19 @@ type Config struct {
 	AIProxyModel         string
 	AIProxyFallbackModel string
 	AIProxyMediaModel    string
+
+	// --- Стабилизация публичного слоя (ТЗ №4, блок D) ---
+
+	// Нормы частоты обращений к HTTP API мини-приложения (в минуту).
+	// Переменная не задана = значение по умолчанию (30/30/6);
+	// явно заданный 0 или -1 = лимит отключён (только для отладки).
+	APIRateLimitPublic   int // публичные эндпоинты (/api/rating и т.п.)
+	APIRateLimitAuth     int // личные эндпоинты после проверки подписи
+	APIRateLimitGenerate int // генерация шаблона с ИИ (дорогая операция)
+
+	// Разрешённые источники (CORS): через запятую. Пусто = стандартный
+	// набор (домен мини-приложения, web.telegram.org, t.me).
+	CORSAllowedOrigins string
 }
 
 func Load() (*Config, error) {
@@ -108,6 +121,12 @@ func Load() (*Config, error) {
 		DostupEmail:       getEnvOrDefault("DOSTUP_EMAIL", ""),
 		DostupPassword:    getEnvOrDefault("DOSTUP_PASSWORD", ""),
 		DostupSessionFile: getEnvOrDefault("DOSTUP_SESSION_FILE", ".dostup_session.json"),
+
+		// Стабилизация публичного слоя (ТЗ №4, блок D)
+		APIRateLimitPublic:   getEnvInt("API_RATE_LIMIT_PUBLIC", 30),
+		APIRateLimitAuth:     getEnvInt("API_RATE_LIMIT_AUTH", 30),
+		APIRateLimitGenerate: getEnvInt("API_RATE_LIMIT_GENERATE", 6),
+		CORSAllowedOrigins:   getEnvOrDefault("CORS_ALLOWED_ORIGINS", ""),
 	}
 
 	// If SMTP_USER is not set, fall back to GMAIL_USER
@@ -165,6 +184,58 @@ func (c *Config) DostupSessionFileDir() string {
 // SMTPAddr returns the full SMTP server address (host:port).
 func (c *Config) SMTPAddr() string {
 	return fmt.Sprintf("%s:%d", c.SMTPHost, c.SMTPPort)
+}
+
+// CORSAllowlist возвращает список источников, которым разрешено обращаться
+// к API из браузера. Если в .env указан CORS_ALLOWED_ORIGINS — берётся он
+// (через запятую); иначе — стандартный набор: домен мини-приложения из
+// MINI_APP_URL, web.telegram.org (включая поддомены вроде a.web.telegram.org
+// добавляются отдельными записями при необходимости) и t.me.
+// Нативные клиенты Telegram заголовок Origin вообще не присылают —
+// такие запросы пропускаются всегда (см. web.corsMiddleware).
+func (c *Config) CORSAllowlist() []string {
+	if c.CORSAllowedOrigins != "" {
+		var out []string
+		for _, s := range strings.Split(c.CORSAllowedOrigins, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				out = append(out, strings.ToLower(s))
+			}
+		}
+		return out
+	}
+
+	origins := []string{
+		"https://web.telegram.org",
+		"https://a.web.telegram.org",
+		"https://k.web.telegram.org",
+		"https://z.web.telegram.org",
+		"https://t.me",
+	}
+	// Домен мини-приложения (минуя стандартный мёртвый дефолт)
+	if u := strings.TrimSpace(c.MiniAppURL); u != "" && u != "https://mini-app-deployment.vercel.app/" {
+		if origin := originOf(u); origin != "" {
+			origins = append(origins, origin)
+		}
+	}
+	return origins
+}
+
+// originOf извлекает scheme://host[:port] из URL.
+func originOf(rawURL string) string {
+	s := strings.TrimSpace(rawURL)
+	if i := strings.Index(s, "://"); i > 0 {
+		s = s[i+3:]
+	} else {
+		return ""
+	}
+	if i := strings.IndexAny(s, "/?#"); i >= 0 {
+		s = s[:i]
+	}
+	if s == "" {
+		return ""
+	}
+	return "https://" + strings.ToLower(s)
 }
 
 func getEnvOrDefault(key, def string) string {
