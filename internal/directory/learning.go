@@ -97,7 +97,7 @@ func (d *Directory) saveLearned(sessionDir string) {
 	defer fileMu.Unlock()
 
 	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
 		log.Printf("[DIR] Error writing temp learned agencies: %v", err)
 		return
 	}

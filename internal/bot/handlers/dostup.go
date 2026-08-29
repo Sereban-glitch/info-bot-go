@@ -49,6 +49,13 @@ func (m *DostupModule) Register() {
         signBtn := tb.InlineButton{Unique: "dp_sign"}
         m.bot.Handle(&signBtn, safeHandler("dp_sign", m.askSignature))
 
+        // Дисклеймер публичности портала (показ 1 раз перед первой отправкой)
+        discOkBtn := tb.InlineButton{Unique: "dp_disc_ok"}
+        m.bot.Handle(&discOkBtn, safeHandler("dp_disc_ok", m.handleDisclosureOk))
+
+        discBackBtn := tb.InlineButton{Unique: "dp_disc_back"}
+        m.bot.Handle(&discBackBtn, safeHandler("dp_disc_back", m.handleDisclosureBack))
+
         backBtn := tb.InlineButton{Unique: "dp_back"}
         m.bot.Handle(&backBtn, safeHandler("dp_back", func(c tb.Context) error {
                 _ = c.Respond()
@@ -282,11 +289,84 @@ func stripTagsSimple(s string) string {
         return regexp.MustCompile(`<[^>]+>`).ReplaceAllString(s, "")
 }
 
+// dostupDisclosureText — текст дисклеймера о публичности портала.
+// Выделен в функцию для теста-контракта: юридически значимые обещания
+// (публичность, маскировка e-mail, предупреждение о чутливих даних,
+// переваги бота) не должны теряться при правках копирайта.
+func dostupDisclosureText() string {
+        return "🌍 <b>Перед першим запитом — важливо знати</b>\n\n" +
+                "«Доступ до правди» — <b>публічний портал</b>, і це його сила: " +
+                "ваш запит не загубиться, а відповідь органу побачать усі. " +
+                "Прозорість — додатковий тиск на орган.\n\n" +
+                "Але з цього випливає правило: портал <b>не для чутливих даних</b>.\n\n" +
+                "📖 <b>Що буде відкрито для всіх:</b>\n" +
+                "• текст вашого запиту та відповідь органу;\n" +
+                "• ваш підпис — ім'я та прізвище;\n" +
+                "• усе, що ви напишете в тексті: адреси, дати, номери.\n\n" +
+                "🔒 <b>Що портал маскує автоматично:</b>\n" +
+                "• e-mail — на сторінці запиту він замінений на [ email address ].\n\n" +
+                "⚠️ Тому не вказуйте в запиті дату народження, домашню адресу, " +
+                "номери документів чи медичні дані — вони стануть публічними. " +
+                "Просіть інформацію, а не розповідайте про себе.\n\n" +
+                "🤖 <b>Чим я відрізняюся від порталу:</b>\n" +
+                "Я лише автоматизую офіційну процедуру (ст. 19–20 ЗУ № 2939-VI), " +
+                "але поверх порталу даю те, чого в нього немає:\n" +
+                "• 🔔 повідомлю в чат, коли орган відповість, — портал мовчить;\n" +
+                "• ⏰ нагадаю, якщо строк (5 робочих днів) мине без відповіді;\n" +
+                "• ✨ покращу запит штучним інтелектом;\n" +
+                "• 🎙 прийму запит голосом і оформлю в документ."
+}
+
+// showDisclosure — экран дисклеймера публичности (шаг dostup:disclose).
+// Показывается ровно один раз на пользователя — до первого подтверждения отправки.
+func (m *DostupModule) showDisclosure(c tb.Context) error {
+        kb := &tb.ReplyMarkup{}
+        kb.InlineKeyboard = [][]tb.InlineButton{
+                {{Unique: "dp_disc_ok", Text: "✅ Я зрозумів, продовжити"}},
+                {{Unique: "dp_disc_back", Text: "✏️ Назад до запиту"}},
+        }
+        return c.Send(dostupDisclosureText(), kb, tb.ModeHTML)
+}
+
+// handleDisclosureOk — «Я зрозумів»: запоминаем флаг и возвращаем подтверждение.
+func (m *DostupModule) handleDisclosureOk(c tb.Context) error {
+        _ = c.Respond()
+        sess := c.Get("session").(*session.SessionData)
+        sess.DostupDisclosureShown = true
+        sess.Step = "dostup:confirm"
+        saveSession(m.deps, c)
+        if sess.Draft.DostupSlug == "" {
+                return c.Send("❌ Чернетку втрачено. Почніть заново: /new")
+        }
+        return m.showSubmitConfirm(c, sess.Draft.DostupSlug, sess.Draft.RecipientName)
+}
+
+// handleDisclosureBack — «Назад до запиту»: вернуть к черновику без потери данных
+// (пользователь может убрать чувствительные данные из текста перед отправкой).
+func (m *DostupModule) handleDisclosureBack(c tb.Context) error {
+        _ = c.Respond()
+        sess := c.Get("session").(*session.SessionData)
+        sess.Step = "new:confirm"
+        saveSession(m.deps, c)
+        nrm := NewNewRequestModule(m.deps)
+        _ = c.Edit("✏️ Чернетка збережена. Перегляньте текст — приберіть чутливі дані, якщо вони там є.")
+        return nrm.showConfirm(c, false)
+}
+
 // showSubmitConfirm — экран финального подтверждения подачи на портал.
 // Показывает подпись письма: лист к органу подписывается именем пользователя,
 // а «Громадський моніторинг» — лишь техническое название аккаунта на портале.
 func (m *DostupModule) showSubmitConfirm(c tb.Context, slug, bodyName string) error {
         sess := c.Get("session").(*session.SessionData)
+
+        // Гейт дисклеймера: до первого показа — только дисклеймер.
+        // Все пути к подтверждению идут через эту функцию, поэтому
+        // пропустить экран невозможно.
+        if !sess.DostupDisclosureShown {
+                sess.Step = "dostup:disclose"
+                saveSession(m.deps, c)
+                return m.showDisclosure(c)
+        }
 
         sign := session.SignatureName(sess.Profile)
         signLine := fmt.Sprintf("✍️ Підпис у листі: <b>%s</b>", htmlEscape(sign))
@@ -302,7 +382,7 @@ func (m *DostupModule) showSubmitConfirm(c tb.Context, slug, bodyName string) er
         }
         statsLine := m.bodyStatsLine(slug)
         warnLine := m.bodyStatsWarning(slug)
-        return c.Send(fmt.Sprintf("🌐 <b>Надіслати через «Доступ до правди»:</b>\n\n🏛 Розпорядник: <b>%s</b>\n📩 Тема: %s\n%s%s\n%s\n\nЗапит буде <b>опубліковано на порталі</b> та надіслано органу. Лист до органу підписується вашим ім'ям (ст. 19 ЗУ «Про доступ до публічної інформації»); «Громадський моніторинг» — лише технічна назва акаунта порталу.\n\nВи отримаєте публічне посилання для відстеження — відповідь видно без реєстрації. Я повідомлю в чат, коли орган надішле відповідь по суті (авто-підтвердження про отримання покажу окремо).", htmlEscape(bodyName), htmlEscape(sess.Draft.Subject), statsLine, signLine, warnLine), kb, tb.ModeHTML)
+        return c.Send(fmt.Sprintf("🌐 <b>Надіслати через «Доступ до правди»:</b>\n\n🏛 Розпорядник: <b>%s</b>\n📩 Тема: %s\n%s%s\n%s\n\n🌍 <b>Нагадування:</b> запит і відповідь органу буде опубліковано відкрито на dostup.org.ua. E-mail портал маскує, чутливих даних у тексті бути не має.\n\nЗапит буде <b>опубліковано на порталі</b> та надіслано органу. Лист до органу підписується вашим ім'ям (ст. 19 ЗУ «Про доступ до публічної інформації»); «Громадський моніторинг» — лише технічна назва акаунта порталу.\n\nВи отримаєте публічне посилання для відстеження — відповідь видно без реєстрації. Я повідомлю в чат, коли орган надішле відповідь по суті (авто-підтвердження про отримання покажу окремо).", htmlEscape(bodyName), htmlEscape(sess.Draft.Subject), statsLine, signLine, warnLine), kb, tb.ModeHTML)
 }
 
 // askSignature — кнопка «✏️ Змінити підпис»: спрашивает, как подписать письмо.
@@ -328,6 +408,10 @@ func (m *DostupModule) HandleText(c tb.Context, step string, text string) (bool,
         text = strings.TrimSpace(text)
 
         switch step {
+        case "dostup:disclose":
+                // Пользователь пишет текст вместо нажатия кнопки — направляем к кнопкам.
+                return true, c.Send("ℹ️ Натисніть кнопку нижче: ✅ Я зрозумів, продовжити — або ✏️ Назад до запиту.")
+
         case "dostup:ask_signature":
                 name := strings.Join(strings.Fields(text), " ")
                 if utf8RuneCount(name) < 2 {
@@ -376,6 +460,13 @@ func (m *DostupModule) handleSubmit(c tb.Context) error {
         }
         if m.deps.Dostup == nil {
                 return c.Send("❌ Канал не налаштований.")
+        }
+        // Страховочный гейт дисклеймера: защита от старых кнопок
+        // «Надіслати та опублікувати» в сообщениях до обновления.
+        if !sess.DostupDisclosureShown {
+                sess.Step = "dostup:disclose"
+                saveSession(m.deps, c)
+                return m.showDisclosure(c)
         }
         // Без имени не отправляем: по ст. 19 ЗУ запрос должен быть подписан
         // именем запрашивающего, иначе орган вправе отказать.
@@ -438,7 +529,7 @@ func (m *DostupModule) handleSubmit(c tb.Context) error {
 
         deadline := addWorkingDays(time.Now(), 5).Format("02.01.2006")
         kb := MainMenuKeyboard(m.deps.Cfg, c.Sender().ID)
-        text := fmt.Sprintf("✅ <b>Запит опубліковано на «Доступ до правди»!</b>\n\n🔗 <b>Публічне посилання (без реєстрації):</b>\n%s\n\n⏰ Дедлайн відповіді органу: <b>%s</b> (до 5 робочих днів).\n\n📌 Що далі:\n• Я періодично перевіряю портал і <b>повідомлю тут</b>, коли орган надішле відповідь по суті.\n• Авто-підтвердження про отримання запиту покажу окремо — воно не рахується відповіддю.\n• Статус можна перевірити будь-коли: /my або /status\n• Публічність запиту — додатковий тиск на орган.", htmlLink(info.URL), deadline)
+        text := fmt.Sprintf("✅ <b>Запит опубліковано на «Доступ до правди»!</b>\n\n🔗 <b>Публічне посилання (без реєстрації):</b>\n%s\n\n⏰ Дедлайн відповіді органу: <b>%s</b> (до 5 робочих днів).\n\n📌 Що далі:\n• Я періодично перевіряю портал і <b>повідомлю тут</b>, коли орган надішле відповідь по суті.\n• Авто-підтвердження про отримання запиту покажу окремо — воно не рахується відповіддю.\n• Статус можна перевірити будь-коли: /my або /status\n• Публічність запиту — додатковий тиск на орган.\n⭐ Це перевага бота над самим порталом: портал мовчить — я повідомлю про відповідь і нагадаю про прострочення.", htmlLink(info.URL), deadline)
         return c.Edit(text, kb, tb.ModeHTML)
 }
 

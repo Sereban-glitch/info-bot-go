@@ -1002,23 +1002,16 @@ function switchTab(tabName) {
    ============================================ */
 async function apiCall(path, options = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  // Primary auth: full initData for HMAC validation
+  // Auth: signed initData only (HMAC-validated server-side).
+  // user_id / X-User-ID fallbacks removed — server rejects unsigned identifiers.
   if (tg && tg.initData) {
     headers['X-Init-Data'] = tg.initData;
   }
-  // Fallback auth: send user_id directly from Telegram SDK
-  // tg.initDataUnsafe is only available inside Telegram app, so this is safe
-  if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
-    headers['X-User-ID'] = String(tg.initDataUnsafe.user.id);
-  }
-  // Build URL with fallback query params
+  // Build URL with the same signed initData as a query param
   let url = API_BASE + path;
   const params = [];
   if (tg && tg.initData) {
     params.push('init_data=' + encodeURIComponent(tg.initData));
-  }
-  if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
-    params.push('user_id=' + tg.initDataUnsafe.user.id);
   }
   if (params.length > 0) {
     url += (url.includes('?') ? '&' : '?') + params.join('&');

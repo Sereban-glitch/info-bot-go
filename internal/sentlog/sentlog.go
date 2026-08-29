@@ -83,7 +83,7 @@ func (sl *SentLog) Append(entry SentEntry) error {
 
         sl.cache = append(sl.cache, entry)
 
-        f, err := os.OpenFile(sl.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        f, err := os.OpenFile(sl.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) // 0600: sent log contains PII
         if err != nil {
                 return err
         }
@@ -297,7 +297,7 @@ func (sl *SentLog) flush() error {
         // Прежний вариант (os.Create прямо по пути) усекал файл ДО записи —
         // падение процесса в этот момент теряло весь журнал.
         tmp := sl.path + ".tmp"
-        f, err := os.Create(tmp)
+        f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600) // 0600: журнал содержит ПД
         if err != nil {
                 return err
         }

@@ -68,6 +68,11 @@ type SessionData struct {
         PRDraft  *PRDraft        `json:"prDraft,omitempty"`
         History  []HistoryEntry  `json:"history,omitempty"`
         FollowUp *FollowUpDraft  `json:"followUp,omitempty"` // черновик уточнения в гилку
+
+        // DostupDisclosureShown — владелец один раз увидел дисклеймер
+        // о публичности портала «Доступ до правди» (что публикуется открыто,
+        // что маскирует портал). Флаг персистентный: повторно не показываем.
+        DostupDisclosureShown bool `json:"dostupDisclosureShown,omitempty"`
 }
 
 // NewSessionData returns a blank session.
@@ -176,7 +181,7 @@ func (t *FollowUpThreads) save() {
                 return
         }
         tmp := t.path + ".tmp"
-        if os.WriteFile(tmp, raw, 0644) == nil {
+        if os.WriteFile(tmp, raw, 0600) == nil {
                 _ = os.Rename(tmp, t.path)
         }
 }
@@ -339,7 +344,8 @@ func (s *FileStore) saveData(path string, data *SessionData) error {
         if err != nil {
                 return err
         }
-        return os.WriteFile(path, raw, 0644)
+        // 0600: session files contain PII (name, email, postal address).
+        return os.WriteFile(path, raw, 0600)
 }
 
 // SessionKey generates a session key from a Telegram user ID.

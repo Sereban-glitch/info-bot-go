@@ -185,5 +185,5 @@ func (s *Stats) flush() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, raw, 0644)
+	return os.WriteFile(s.path, raw, 0600)
 }
