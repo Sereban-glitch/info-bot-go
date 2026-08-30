@@ -22,13 +22,15 @@ type apiLimiters struct {
 	public   *ratelimiter.KeyRateLimiter
 	auth     *ratelimiter.KeyRateLimiter
 	generate *ratelimiter.KeyRateLimiter
+	analyze  *ratelimiter.KeyRateLimiter // AI-розбір ответа органа
 }
 
-func newAPILimiters(public, auth, generate int) *apiLimiters {
+func newAPILimiters(public, auth, generate, analyze int) *apiLimiters {
 	return &apiLimiters{
 		public:   ratelimiter.NewKeyLimiter(public, time.Minute),
 		auth:     ratelimiter.NewKeyLimiter(auth, time.Minute),
 		generate: ratelimiter.NewKeyLimiter(generate, time.Minute),
+		analyze:  ratelimiter.NewKeyLimiter(analyze, time.Minute),
 	}
 }
 

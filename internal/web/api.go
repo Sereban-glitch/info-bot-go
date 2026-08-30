@@ -14,6 +14,7 @@ import (
 	"info-bot-go/internal/dostup"
 	"info-bot-go/internal/sentlog"
 	"info-bot-go/internal/session"
+	"info-bot-go/internal/stars"
 )
 
 // ---------------------------------------------------------------------------
@@ -83,6 +84,30 @@ type GenerateTemplateResponse struct {
 	Body          string   `json:"body"`
 	LawRefs       []LawRef `json:"lawRefs"`
 	RecipientHint string   `json:"recipientHint"`
+}
+
+// AnalyzeRequest — запрос розбора ответа органа из мини-приложения.
+type AnalyzeRequest struct {
+	Organ   string `json:"organ"`
+	Subject string `json:"subject"`
+	Text    string `json:"text"`
+}
+
+// StarsStatusResponse — состояние монетизации и баланс пользователя.
+type StarsStatusResponse struct {
+	Enabled     bool `json:"enabled"`
+	Price       int  `json:"price"`       // Stars за пакет
+	Pack        int  `json:"pack"`        // кредитов в пакете
+	FreeCredits int  `json:"freeCredits"` // стартовый бонус
+	Balance     int  `json:"balance"`     // текущий баланс (0 при выключенной)
+}
+
+// StarsInvoiceResponse — ссылка на оплату пакета.
+type StarsInvoiceResponse struct {
+	Enabled bool   `json:"enabled"`
+	Link    string `json:"link,omitempty"`
+	Price   int    `json:"price"`
+	Pack    int    `json:"pack"`
 }
 
 type LawRef struct {
@@ -659,5 +684,147 @@ func (s *Server) handleSearchRequests(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: map[string]interface{}{
 		"items":     items,
 		"searchURL": searchURL,
+	}})
+}
+
+// ---------------------------------------------------------------------------
+// AI-разбор ответа органа (ТЗ №6: вкладка «Розбір» в мини-приложении)
+// ---------------------------------------------------------------------------
+
+// handleAnalyze — POST /api/analyze: AI-разбор ответа органа.
+// Тело: {organ?, subject?, text}. Ответ — вердикт ai.RefusalAnalysis.
+//
+// Защита (по слоям):
+//  1. IP-лимит anl (6/мин, middleware — до подписи);
+//  2. подпись Telegram (authMiddleware);
+//  3. монетизация: при STARS_ENABLED списывается 1 кредит (при сбое
+//     модели возвращается), при выключенной — часовой лимит 6/час
+//     (как в боте; защита AI-квоты).
+func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{OK: false, Err: "method not allowed"})
+		return
+	}
+
+	userID := getUserID(r)
+	if userID == 0 {
+		writeJSON(w, http.StatusUnauthorized, APIResponse{OK: false, Err: "unauthorized"})
+		return
+	}
+
+	var req AnalyzeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, APIResponse{OK: false, Err: "invalid request body"})
+		return
+	}
+	req.Text = strings.TrimSpace(req.Text)
+	if len(req.Text) < 40 {
+		writeJSON(w, http.StatusBadRequest, APIResponse{OK: false, Err: "text too short"})
+		return
+	}
+	if len(req.Text) > 8000 {
+		req.Text = req.Text[:8000]
+	}
+
+	// AI не настроен — сразу честный 503, кредиты не трогаем.
+	if s.gemini == nil {
+		writeJSON(w, http.StatusServiceUnavailable, APIResponse{OK: false, Err: "AI not configured"})
+		return
+	}
+
+	// Монетизация или часовой лимит бесплатных разборов.
+	spendCredit := s.cfg.StarsEnabled && s.stars != nil
+	if spendCredit {
+		s.stars.EnsureWelcome(userID, s.cfg.StarsFreeCredits)
+		if !s.stars.Spend(userID, 1) {
+			writeJSON(w, http.StatusPaymentRequired, APIResponse{OK: false, Err: "no credits"})
+			return
+		}
+	} else if s.analyzeUsers != nil && !s.analyzeUsers.Allow("u:"+strconv.FormatInt(userID, 10)) {
+		writeJSON(w, http.StatusTooManyRequests, APIResponse{OK: false, Err: "hourly limit"})
+		return
+	}
+
+	analysis, err := s.gemini.AnalyzeRefusal(
+		strings.TrimSpace(req.Organ),
+		strings.TrimSpace(req.Subject),
+		req.Text,
+		nil, // фото — только через бота (мини-апп шлёт текст)
+	)
+	if err != nil {
+		if spendCredit {
+			_ = s.stars.Add(userID, 1) // сбой модели — кредит возвращаем
+		}
+		log.Printf("[WEB] analyze error for user %d: %v", userID, err)
+		writeJSON(w, http.StatusInternalServerError, APIResponse{OK: false, Err: "AI analysis failed"})
+		return
+	}
+
+	log.Printf("[WEB] analyze user=%d organ=%q type=%s next=%s",
+		userID, req.Organ, analysis.Type, analysis.NextStep)
+	writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: analysis})
+}
+
+// ---------------------------------------------------------------------------
+// Монетизация Telegram Stars (каркас, выключена по умолчанию)
+// ---------------------------------------------------------------------------
+
+// handleStarsStatus — GET /api/stars/status: состояние монетизации и баланс.
+// При выключенной монетизации отдаёт enabled=false (фронтенд прячет оплату).
+func (s *Server) handleStarsStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{OK: false, Err: "method not allowed"})
+		return
+	}
+	userID := getUserID(r)
+	if userID == 0 {
+		writeJSON(w, http.StatusUnauthorized, APIResponse{OK: false, Err: "unauthorized"})
+		return
+	}
+	resp := StarsStatusResponse{
+		Enabled:     s.cfg.StarsEnabled && s.stars != nil,
+		Price:       s.cfg.StarsAnalyzePrice,
+		Pack:        s.cfg.StarsAnalyzePack,
+		FreeCredits: s.cfg.StarsFreeCredits,
+	}
+	if resp.Enabled {
+		s.stars.EnsureWelcome(userID, s.cfg.StarsFreeCredits)
+		resp.Balance = s.stars.Balance(userID)
+	}
+	writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: resp})
+}
+
+// handleStarsInvoice — POST /api/stars/invoice: ссылка на оплату пакета.
+// При выключенной монетизации — 403 с enabled=false (кнопок не должно быть).
+func (s *Server) handleStarsInvoice(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{OK: false, Err: "method not allowed"})
+		return
+	}
+	userID := getUserID(r)
+	if userID == 0 {
+		writeJSON(w, http.StatusUnauthorized, APIResponse{OK: false, Err: "unauthorized"})
+		return
+	}
+	if !s.cfg.StarsEnabled || s.stars == nil || s.starsClient == nil {
+		writeJSON(w, http.StatusForbidden, APIResponse{OK: false, Err: "payments disabled"})
+		return
+	}
+	link, err := s.starsClient.CreateInvoiceLink(
+		fmt.Sprintf("Пакет: %d AI-розборів", s.cfg.StarsAnalyzePack),
+		"Розбір відповідей органів: тип, законність за ЗУ №2939-VI, порушені статті та готовий документ.",
+		stars.BuildPayload(userID, s.cfg.StarsAnalyzePack),
+		s.cfg.StarsAnalyzePrice,
+	)
+	if err != nil {
+		log.Printf("[WEB] stars invoice user=%d: %v", userID, err)
+		writeJSON(w, http.StatusInternalServerError, APIResponse{OK: false, Err: "invoice failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: StarsInvoiceResponse{
+		Enabled: true,
+		Link:    link,
+		Price:   s.cfg.StarsAnalyzePrice,
+		Pack:    s.cfg.StarsAnalyzePack,
 	}})
 }

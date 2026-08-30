@@ -20,6 +20,7 @@ import (
 	"info-bot-go/internal/ratelimiter"
 	"info-bot-go/internal/sentlog"
 	"info-bot-go/internal/session"
+	"info-bot-go/internal/stars"
 	"info-bot-go/internal/stats"
 
 	tb "gopkg.in/telebot.v3"
@@ -35,6 +36,7 @@ type Bot struct {
 	gemini        *ai.Rotator
 	stats         *stats.Stats
 	sessDir       string
+	stars         *stars.Store
 	rateLim       *ratelimiter.RateLimiter
 	sync          *handlers.DostupSync
 	dostup        *dostup.Client       // канал «Доступ до правды»
@@ -96,6 +98,11 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 
 	b.Use(botInst.sessionMiddleware())
 
+	// Монетизация Stars (каркас): хранилище кредитов всегда создаётся,
+	// но списания идут только при STARS_ENABLED=true.
+	starsStore := stars.NewStore(cfg.StarsStoreFile)
+	botInst.stars = starsStore
+
 	deps := &handlers.Deps{
 		Cfg:       cfg,
 		Sessions:  sessStore,
@@ -108,6 +115,7 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 		Stats:     globalStats,
 		RateLimit: rl,
 		OSINT:     finder,
+		Stars:     starsStore,
 	}
 
 	// Канал «Доступ до правди» (dostup.org.ua): включается переменными
@@ -196,6 +204,9 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 func (b *Bot) Telebot() *tb.Bot     { return b.bot }
 func (b *Bot) Rotator() *ai.Rotator { return b.gemini }
 func (b *Bot) Start()               { b.bot.Start() }
+
+// Stars — хранилище кредитов монетизации (для веб-сервера).
+func (b *Bot) Stars() *stars.Store { return b.stars }
 
 // Dostup — клиент портала «Доступ до правды» (nil — канал не настроен).
 func (b *Bot) Dostup() *dostup.Client { return b.dostup }

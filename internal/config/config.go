@@ -75,10 +75,21 @@ type Config struct {
 	APIRateLimitPublic   int // публичные эндпоинты (/api/rating и т.п.)
 	APIRateLimitAuth     int // личные эндпоинты после проверки подписи
 	APIRateLimitGenerate int // генерация шаблона с ИИ (дорогая операция)
+	APIRateLimitAnalyze  int // AI-розбір відповіді (дорогая операция)
 
 	// Разрешённые источники (CORS): через запятую. Пусто = стандартный
 	// набор (домен мини-приложения, web.telegram.org, t.me).
 	CORSAllowedOrigins string
+
+	// --- ТЗ №6+: монетизация через Telegram Stars (КАРКАС, выключен) ---
+	// STARS_ENABLED=false (по умолчанию): все розборы бесплатны, кредиты
+	// не списываются, кнопки оплаты не показываются. Когда решим
+	// включить — достаточно STARS_ENABLED=true в .env и рестарта.
+	StarsEnabled      bool   // вкл/выкл монетизации целиком
+	StarsAnalyzePrice int    // цена пакета в Stars (XTR)
+	StarsAnalyzePack  int    // кредитов (розборов) в пакете
+	StarsFreeCredits  int    // стартовый бонус новому пользователю
+	StarsStoreFile    string // файл балансов кредитов
 }
 
 func Load() (*Config, error) {
@@ -127,6 +138,14 @@ func Load() (*Config, error) {
 		APIRateLimitAuth:     getEnvInt("API_RATE_LIMIT_AUTH", 30),
 		APIRateLimitGenerate: getEnvInt("API_RATE_LIMIT_GENERATE", 6),
 		CORSAllowedOrigins:   getEnvOrDefault("CORS_ALLOWED_ORIGINS", ""),
+
+		// Монетизация Stars (каркас, выключен) + лимит дорогого /api/analyze
+		StarsEnabled:        getEnvBool("STARS_ENABLED", false),
+		StarsAnalyzePrice:   getEnvInt("STARS_ANALYZE_PRICE", 25),
+		StarsAnalyzePack:    getEnvInt("STARS_ANALYZE_PACK", 10),
+		StarsFreeCredits:    getEnvInt("STARS_FREE_CREDITS", 3),
+		StarsStoreFile:      getEnvOrDefault("STARS_STORE_FILE", "stars_credits.json"),
+		APIRateLimitAnalyze: getEnvInt("API_RATE_LIMIT_ANALYZE", 6),
 	}
 
 	// If SMTP_USER is not set, fall back to GMAIL_USER
@@ -268,4 +287,19 @@ func getEnvInt64(key string, def int64) int64 {
 		return def
 	}
 	return n
+}
+
+// getEnvBool читает булеву переменную (true/1/yes/on — вкл).
+func getEnvBool(key string, def bool) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	if v == "" {
+		return def
+	}
+	switch v {
+	case "true", "1", "yes", "on":
+		return true
+	case "false", "0", "no", "off":
+		return false
+	}
+	return def
 }

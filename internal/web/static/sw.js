@@ -7,7 +7,7 @@
 //   • статика — cache-first.
 // Версия кэша повышена — старые записи будут удалены при активации.
 
-const CACHE_NAME = "prozoro-v5";
+const CACHE_NAME = "prozoro-v6";
 const STATIC_ASSETS = ["/manifest.json", "/icons/icon.svg"];
 
 self.addEventListener("install", (event) => {

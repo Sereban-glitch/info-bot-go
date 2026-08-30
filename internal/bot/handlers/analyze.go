@@ -42,12 +42,18 @@ type AnalyzeModule struct {
 	deps   *Deps
 	bot    *tb.Bot
 	limits *analyzeLimiter
+
+	starsModule *StarsModule // для кнопки «Купити розбори» (может быть nil)
 }
 
 // NewAnalyzeModule создаёт модуль розбора.
 func NewAnalyzeModule(deps *Deps) *AnalyzeModule {
 	return &AnalyzeModule{deps: deps, bot: deps.Bot, limits: newAnalyzeLimiter(6, time.Hour)}
 }
+
+// SetStarsModule связывает розбор с монетизацией (кнопка покупки
+// появляется в подсказке о пустом балансе).
+func (m *AnalyzeModule) SetStarsModule(sm *StarsModule) { m.starsModule = sm }
 
 func (m *AnalyzeModule) Name() string       { return "analyze" }
 func (m *AnalyzeModule) StepPrefix() string { return "analyze:" }
@@ -273,12 +279,34 @@ func (m *AnalyzeModule) precheck(c tb.Context) bool {
 		_ = c.Send("⚠️ AI-розбір зараз недоступний (немає робочого ключа моделі). Спробуйте пізніше.")
 		return false
 	}
-	if !m.limits.allow(c.Sender().ID) {
+	uid := c.Sender().ID
+	// Монетизация: включена — списываем 1 кредит (оплаченные розборы идут
+	// без часового лимита). Выключена — бесплатный режим с прежним
+	// лимитом 6/час (защита AI-квоты).
+	if m.deps.Cfg.StarsEnabled && m.deps.Stars != nil {
+		m.deps.Stars.EnsureWelcome(uid, m.deps.Cfg.StarsFreeCredits)
+		if !m.deps.Stars.Spend(uid, 1) {
+			kb := &tb.ReplyMarkup{}
+			kb.InlineKeyboard = [][]tb.InlineButton{{
+				{Unique: "stars_buy_hint", Text: "💳 Купити розбори"},
+			}}
+			_ = c.Send("💰 Безкоштовні розбори вичерпано. Купіть пакет — і продовжимо.", kb)
+			return false
+		}
+	} else if !m.limits.allow(uid) {
 		_ = c.Send("⏳ Ліміт розборів вичерпано (6 на годину) — це захист від перевитрати AI-квоти. Спробуйте за годину.")
 		return false
 	}
 	_ = c.Bot().Notify(c.Sender(), tb.Typing)
 	return true
+}
+
+// buyCmd — кнопка «Купити розбори» из подсказки о пустом балансе.
+func (m *AnalyzeModule) buyCmd(c tb.Context) error {
+	if sm := m.starsModule; sm != nil {
+		return sm.handleBuy(c)
+	}
+	return c.Send("💳 Оплата розборів ще не ввімкнена.")
 }
 
 // runAnalysis — вызов модели, карточка вердикта и готовый документ.
@@ -290,10 +318,18 @@ func (m *AnalyzeModule) runAnalysis(c tb.Context, sess *session.SessionData, pho
 	if !m.precheck(c) {
 		return nil
 	}
+	// Монетизация: если кредит был списан в precheck — при сбое модели
+	// возвращаем его пользователю (честная оплата только за результат).
+	spentCredit := m.deps.Cfg.StarsEnabled && m.deps.Stars != nil
+
 	_ = c.Send("⏳ Аналізую відповідь… (10–30 секунд)")
 
 	analysis, err := m.deps.Gemini.AnalyzeRefusal(d.Organ, d.Subject, d.ReplyText, photo)
 	if err != nil {
+		if spentCredit {
+			_ = m.deps.Stars.Add(c.Sender().ID, 1)
+			_ = c.Send("↩️ Кредит розбору повернено на баланс.")
+		}
 		log.Printf("[ANALYZE] AI error user=%d: %v", c.Sender().ID, err)
 		return c.Send("❌ Не вдалося виконати розбір (помилка моделі). Спробуйте ще раз за хвилину.")
 	}

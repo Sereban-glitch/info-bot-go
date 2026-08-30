@@ -520,6 +520,67 @@ small { font-size: 13px; color: var(--tg-hint); }
   left: 100%;
 }
 
+/* ===== Вкладка «Розбір» (ТЗ №6) ===== */
+.an-input {
+  width: 100%; margin-bottom: 10px;
+  border-radius: var(--radius); border: 1.5px solid var(--tg-border);
+  background: var(--tg-card); color: var(--tg-text);
+  padding: 12px var(--spacing); font-size: 15px;
+  font-family: var(--font); outline: none; box-sizing: border-box;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.an-input:focus { border-color: var(--tg-button); box-shadow: 0 0 0 3px rgba(88,166,255,0.15); }
+.an-optional-toggle {
+  font-size: 13px; color: var(--tg-hint); cursor: pointer;
+  margin: 10px 0 8px; user-select: none;
+}
+.an-stars-chip {
+  background: var(--tg-card); border: 1.5px solid var(--tg-border);
+  border-radius: var(--radius); padding: 10px 14px; margin-bottom: 14px;
+  font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+}
+.an-stars-chip .an-buy-btn {
+  background: var(--tg-button); color: var(--tg-button-text, #fff);
+  border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px;
+  font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.an-verdict {
+  background: var(--tg-card); border: 1.5px solid var(--tg-border);
+  border-radius: var(--radius); padding: 16px; margin-top: 16px;
+}
+.an-verdict-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.an-type-badge {
+  font-size: 14px; font-weight: 700; padding: 6px 12px; border-radius: 10px;
+  background: rgba(88,166,255,0.12); color: var(--tg-text);
+}
+.an-type-badge.bad { background: rgba(255,99,99,0.15); }
+.an-type-badge.warn { background: rgba(255,193,69,0.15); }
+.an-type-badge.good { background: rgba(75,201,142,0.15); }
+.an-legal-badge {
+  font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 10px;
+  background: rgba(255,99,99,0.15);
+}
+.an-legal-badge.ok { background: rgba(75,201,142,0.15); }
+.an-legal-badge.mid { background: rgba(255,193,69,0.15); }
+.an-verdict p { margin: 8px 0; font-size: 14px; line-height: 1.5; }
+.an-verdict .an-label { color: var(--tg-hint); }
+.an-violation {
+  border-left: 3px solid rgba(255,99,99,0.6); padding: 6px 10px;
+  margin: 6px 0; font-size: 13px; background: rgba(255,99,99,0.06); border-radius: 0 8px 8px 0;
+}
+.an-doc {
+  background: var(--tg-card); border: 1.5px solid var(--tg-border);
+  border-radius: var(--radius); padding: 16px; margin-top: 12px;
+}
+.an-doc-title { font-weight: 700; margin-bottom: 8px; font-size: 15px; }
+.an-doc-body { white-space: pre-wrap; font-size: 14px; line-height: 1.6; }
+.an-paywall {
+  background: var(--tg-card); border: 1.5px solid var(--tg-border);
+  border-radius: var(--radius); padding: 18px; margin-top: 16px; text-align: center;
+}
+.an-paywall h3 { margin: 0 0 8px; }
+.an-paywall p { font-size: 14px; color: var(--tg-hint); margin: 4px 0 12px; }
+
 /* Result card */
 .gen-result {
   margin-top: var(--spacing); display: none;
@@ -937,8 +998,61 @@ small { font-size: 13px; color: var(--tg-hint); }
   </div>
 
   <div class="profile-version">
-    Прозоро v2.0.0<br>
+    Прозоро v2.1.0<br>
     Доступ до публічної інформації
+  </div>
+</div>
+
+<!-- ===================== TAB: РОЗБІР (ТЗ №6) ===================== -->
+<div class="tab-page" id="tab-analyze">
+  <div class="generator-hero">
+    <h2>⚖️ Розбір відповіді</h2>
+    <p>Вставте відповідь органу — AI оцінить її як юрист: це відмова чи відповідь по суті, чи законно, які статті порушено — і підготує готовий документ</p>
+  </div>
+
+  <div id="an-stars-chip" class="an-stars-chip" style="display:none;"></div>
+
+  <label style="display:block;font-size:13px;font-weight:600;color:var(--tg-hint);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Відповідь органу</label>
+  <textarea
+    class="gen-textarea"
+    id="an-text"
+    placeholder="Вставте сюди повний текст відповіді органу (лист, e-mail або повідомлення з порталу)..."
+    maxlength="8000"
+  ></textarea>
+
+  <div class="an-optional-toggle" onclick="toggleAnOptional()" id="an-optional-toggle">
+    <span id="an-optional-arrow">▸</span> Вказати орган і тему запиту (необовʼязково)
+  </div>
+  <div id="an-optional" style="display:none;">
+    <input class="an-input" id="an-organ" type="text" placeholder="🏛 Орган (наприклад: Міністерство охорони здоровʼя)">
+    <input class="an-input" id="an-subject" type="text" placeholder="📂 Тема запиту (про що був запит)">
+  </div>
+
+  <button class="gen-btn" id="an-btn" onclick="runAnalyze()">
+    <span class="btn-text">⚖️ Розібрати відповідь</span>
+    <div class="spinner"></div>
+  </button>
+
+  <div id="an-result"></div>
+
+  <div class="law-section">
+    <h3>💡 Як це працює</h3>
+    <div class="law-card">
+      <div class="law-card-title">1️⃣ Отримали відповідь</div>
+      <div class="law-card-text">Скопіюйте текст відповіді органу — з листа, електронного листа або сторінки запиту на порталі.</div>
+    </div>
+    <div class="law-card">
+      <div class="law-card-title">2️⃣ Отримайте висновок</div>
+      <div class="law-card-text">AI визначить: повна чи часткова відмова, відписка, відповідь по суті. Оцінить законність за ЗУ № 2939-VI і назве порушені статті.</div>
+    </div>
+    <div class="law-card">
+      <div class="law-card-title">3️⃣ Готовий документ</div>
+      <div class="law-card-text">Якщо відповідь незаконна — отримаєте готову скаргу, уточнення або звернення. Залишиться скопіювати й надіслати.</div>
+    </div>
+    <div class="law-card">
+      <div class="law-card-title">📷 Фото або голос</div>
+      <div class="law-card-text">Лист надіслали паперовим фото або зручніше продиктувати? Надішліть його боту в чат командою /analyze — він розбирає й фото, і голос.</div>
+    </div>
   </div>
 </div>
 
@@ -983,6 +1097,10 @@ small { font-size: 13px; color: var(--tg-hint); }
   <button class="tab-bar-item" data-tab="library" onclick="switchTab('library')">
     <span class="tab-icon">📚</span>
     <span class="tab-label">Бібліотека</span>
+  </button>
+  <button class="tab-bar-item" data-tab="analyze" onclick="switchTab('analyze')">
+    <span class="tab-icon">⚖️</span>
+    <span class="tab-label">Розбір</span>
   </button>
   <button class="tab-bar-item" data-tab="rating" onclick="switchTab('rating')">
     <span class="tab-icon">🏆</span>
@@ -1091,6 +1209,7 @@ function switchTab(tabName) {
   if (tabName === 'library') { loadTemplates(); }
   if (tabName === 'profile') loadProfile();
   if (tabName === 'rating') loadRating(false);
+  if (tabName === 'analyze') initAnalyzeTab();
 }
 
 /* ============================================
@@ -1740,6 +1859,266 @@ async function deleteMyData() {
   }
   showToast('✅ Дані видалено');
   setTimeout(() => { loadProfile(); loadOverview(); }, 600);
+}
+
+/* ============================================
+   ANALYZE TAB — ТЗ №6: AI-розбір відповіді органу
+   ============================================ */
+let anStarsCache = null; // {enabled, price, pack, freeCredits, balance}
+
+function toggleAnOptional() {
+  const box = document.getElementById('an-optional');
+  const arrow = document.getElementById('an-optional-arrow');
+  const open = box.style.display !== 'none';
+  box.style.display = open ? 'none' : 'block';
+  arrow.textContent = open ? '▸' : '▾';
+}
+
+async function initAnalyzeTab() {
+  if (!anStarsCache) await loadStarsStatus();
+  renderStarsChip();
+}
+
+async function loadStarsStatus() {
+  const d = await apiCall('/api/stars/status');
+  anStarsCache = d || { enabled: false, price: 25, pack: 10, freeCredits: 3, balance: 0 };
+}
+
+function renderStarsChip() {
+  const chip = document.getElementById('an-stars-chip');
+  if (!anStarsCache || !anStarsCache.enabled) { chip.style.display = 'none'; return; }
+  chip.style.display = 'flex';
+  chip.innerHTML =
+    '<span>⭐️ Кредити розборів: <b>' + (anStarsCache.balance || 0) + '</b>' +
+    (anStarsCache.freeCredits ? ' <span style="color:var(--tg-hint);font-size:12px;">(' + anStarsCache.freeCredits + ' безкоштовно новим користувачам)</span>' : '') +
+    '</span>' +
+    '<button class="an-buy-btn" onclick="buyCredits()">💳 ' + anStarsCache.price + ' ⭐ за ' + anStarsCache.pack + '</button>';
+}
+
+// apiCall теряет HTTP-коды (402/429), а для монетизации они важны —
+// этот вариант возвращает { status, data }.
+async function apiCallRaw(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (tg && tg.initData) headers['X-Init-Data'] = tg.initData;
+  let url = API_BASE + path;
+  if (tg && tg.initData) url += (url.includes('?') ? '&' : '?') + 'init_data=' + encodeURIComponent(tg.initData);
+  try {
+    const resp = await fetch(url, { headers, ...options });
+    let data = null;
+    try { data = await resp.json(); } catch (e) { /* пустой тело */ }
+    return { status: resp.status, data };
+  } catch (e) {
+    console.error('apiCallRaw:', e, path);
+    return { status: 0, data: null };
+  }
+}
+
+function anTypeLabel(t) {
+  switch (t) {
+    case 'refusal': return { text: '❌ Повна відмова', cls: 'bad' };
+    case 'partial': return { text: '🟡 Часткова відмова', cls: 'warn' };
+    case 'brushoff': return { text: '🤷 Відписка', cls: 'warn' };
+    case 'substantive': return { text: '✅ Відповідь по суті', cls: 'good' };
+    case 'ack': return { text: '📨 Авто-підтвердження', cls: 'warn' };
+  }
+  return { text: '❔ Незрозуміло', cls: '' };
+}
+
+function anLegalLabel(s) {
+  switch (s) {
+    case 'legal': return { text: 'Законно', cls: 'ok' };
+    case 'illegal': return { text: 'Незаконно', cls: '' };
+    case 'partially': return { text: 'Частково законно', cls: 'mid' };
+  }
+  return { text: 'Оцінка невизначена', cls: 'mid' };
+}
+
+function anDeadlineLabel(s) {
+  switch (s) {
+    case 'ok': return '⏱ Строк: дотримано';
+    case 'missed': return '⏱ Строк: прострочено';
+  }
+  return '';
+}
+
+function anNextStepLabel(s) {
+  switch (s) {
+    case 'clarification': return 'уточнення запиту';
+    case 'complaint': return 'скарга';
+    case 'appeal': return 'оскарження';
+  }
+  return '';
+}
+
+async function runAnalyze() {
+  const text = document.getElementById('an-text').value.trim();
+  const organ = document.getElementById('an-organ') ? document.getElementById('an-organ').value.trim() : '';
+  const subject = document.getElementById('an-subject') ? document.getElementById('an-subject').value.trim() : '';
+  const btn = document.getElementById('an-btn');
+  const result = document.getElementById('an-result');
+
+  if (!tg || !tg.initData) {
+    result.innerHTML = '<div class="an-paywall"><h3>📱 Відкрийте в Telegram</h3><p>Розбір відповідей доступний у міні-застосунку бота — відкрийте його через меню бота в Telegram.</p></div>';
+    return;
+  }
+  if (text.length < 40) {
+    showToast('Вставте повніший текст відповіді (мінімум 40 символів)');
+    return;
+  }
+
+  btn.classList.add('loading');
+  btn.disabled = true;
+  result.innerHTML = '<div class="an-verdict"><p>⏳ Аналізую відповідь… (10–30 секунд)</p></div>';
+
+  try {
+    const { status, data } = await apiCallRaw('/api/analyze', {
+      method: 'POST',
+      body: JSON.stringify({ organ, subject, text })
+    });
+
+    if (status === 402) { // кредиты исчерпаны — витрина покупки
+      await loadStarsStatus();
+      renderStarsChip();
+      result.innerHTML = anPaywallHTML('💰 Безкоштовні розбори вичерпано');
+      return;
+    }
+    if (status === 429) {
+      result.innerHTML = '<div class="an-verdict"><p>⏳ Ліміт розборів вичерпано (6 на годину) — захист від перевитрати AI-квоти. Спробуйте за годину.</p></div>';
+      return;
+    }
+    if (status === 503) {
+      result.innerHTML = '<div class="an-verdict"><p>⚠️ AI-розбір зараз недоступний. Спробуйте пізніше.</p></div>';
+      return;
+    }
+    if (!data || !data.ok || !data.data) {
+      result.innerHTML = '<div class="an-verdict"><p>❌ Не вдалося виконати розбір' +
+        (data && data.error ? ' (' + escHtml(data.error) + ')' : '') + '. Спробуйте ще раз за хвилину.</p></div>';
+      return;
+    }
+
+    renderAnVerdict(data.data, organ, subject);
+    // если списали кредит — обновляем баланс в шапке
+    if (anStarsCache && anStarsCache.enabled) { await loadStarsStatus(); renderStarsChip(); }
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+function anPaywallHTML(title) {
+  const st = anStarsCache || { price: 25, pack: 10 };
+  return '<div class="an-paywall"><h3>' + escHtml(title || 'Потрібні кредити') + '</h3>' +
+    '<p>Пакет: <b>' + st.pack + ' AI-розборів</b> за <b>' + st.price + ' Telegram Stars</b></p>' +
+    '<p style="font-size:12px;">Оплата — через Telegram, спишуться Stars з вашого акаунта.</p>' +
+    '<button class="gen-btn" style="width:100%;" onclick="buyCredits()"><span class="btn-text">💳 Купити ' + st.pack + ' розборів за ' + st.price + ' ⭐</span></button></div>';
+}
+
+function renderAnVerdict(a, organ, subject) {
+  const result = document.getElementById('an-result');
+  const type = anTypeLabel(a.type);
+  const legal = anLegalLabel(a.isLegal);
+  let html = '<div class="an-verdict">';
+  html += '<div class="an-verdict-head">' +
+    '<span class="an-type-badge ' + type.cls + '">' + type.text + '</span>' +
+    '<span class="an-legal-badge ' + legal.cls + '">' + legal.text + '</span>' +
+    '</div>';
+  if (organ) html += '<p><span class="an-label">🏛 Орган:</span> ' + escHtml(organ) + '</p>';
+  if (subject) html += '<p><span class="an-label">📂 Запит:</span> «' + escHtml(subject) + '»</p>';
+  if (a.summary) html += '<p>💬 ' + escHtml(a.summary) + '</p>';
+  if (a.legalNotes) html += '<p><span class="an-label">Обґрунтування:</span> ' + escHtml(a.legalNotes) + '</p>';
+  if (a.violations && a.violations.length) {
+    html += '<p><span class="an-label">🚩 Порушення:</span></p>';
+    for (const v of a.violations) {
+      html += '<div class="an-violation"><b>' + escHtml(v.article) + '</b>' +
+        (v.reason ? ' — ' + escHtml(v.reason) : '') + '</div>';
+    }
+  }
+  const dl = anDeadlineLabel(a.deadlineOk);
+  if (dl) html += '<p>' + dl + '</p>';
+  if (a.recommendation) html += '<p>💡 <b>Порада:</b> ' + escHtml(a.recommendation) + '</p>';
+  const ns = anNextStepLabel(a.nextStep);
+  if (ns && a.nextStep !== 'none') html += '<p>➡️ <b>Наступний крок:</b> ' + ns + '</p>';
+  html += '<p style="font-size:12px;color:var(--tg-hint);margin-top:12px;">ℹ️ Автоматична правова оцінка на основі ЗУ № 2939-VI. Не є юридичною консультацією.</p>';
+  html += '</div>';
+
+  // Готовый документ
+  if (a.nextStep && a.nextStep !== 'none' && a.draftBody) {
+    html += '<div class="an-doc">';
+    html += '<div class="an-doc-title">✉️ Готовий документ: ' + ns + '</div>';
+    if (a.draftSubject) html += '<p style="margin:4px 0;"><b>Тема:</b> ' + escHtml(a.draftSubject) + '</p>';
+    html += '<div class="an-doc-body" id="an-doc-body">' + escHtml(a.draftBody) + '</div>';
+    html += '<div class="result-actions" style="margin-top:12px;">' +
+      '<button class="result-action-btn primary" onclick="copyAnDoc()">📋 Скопіювати документ</button>' +
+      '</div>';
+    html += '</div>';
+  }
+  result.innerHTML = html;
+}
+
+function copyAnDoc() {
+  const body = document.getElementById('an-doc-body');
+  if (!body) return;
+  const text = body.textContent || '';
+  copyToClipboard(text);
+}
+
+function copyToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(
+      () => showToast('✅ Скопійовано'),
+      () => fallbackCopy(text)
+    );
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast('✅ Скопійовано');
+  } catch (e) {
+    showToast('Не вдалося скопіювати');
+  }
+  document.body.removeChild(ta);
+}
+
+async function buyCredits() {
+  if (!tg || !tg.initData) {
+    showToast('Оплата доступна лише в Telegram');
+    return;
+  }
+  const btn = event && event.target;
+  if (btn) { btn.disabled = true; setTimeout(() => { btn.disabled = false; }, 3000); }
+  const { status, data } = await apiCallRaw('/api/stars/invoice', { method: 'POST' });
+  if (status !== 200 || !data || !data.ok || !data.data || !data.data.link) {
+    showToast('Не вдалося створити рахунок — спробуйте за хвилину');
+    return;
+  }
+  const link = data.data.link;
+  if (tg.openInvoice) {
+    try {
+      tg.openInvoice(link, async (invoiceEvent) => {
+        // invoiceClosed: status = paid | failed | pending | cancelled
+        if (invoiceEvent && invoiceEvent.status === 'paid') {
+          showToast('✅ Оплату отримано — кредити нараховуються');
+          setTimeout(async () => {
+            await loadStarsStatus();
+            renderStarsChip();
+          }, 2000);
+        }
+      });
+      return;
+    } catch (e) { console.error('openInvoice:', e); }
+  }
+  // Фолбэк: открыть ссылку
+  window.open(link, '_blank');
 }
 
 /* ============================================

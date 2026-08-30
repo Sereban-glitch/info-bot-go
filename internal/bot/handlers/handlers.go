@@ -16,6 +16,7 @@ import (
 	"info-bot-go/internal/ratelimiter"
 	"info-bot-go/internal/sentlog"
 	"info-bot-go/internal/session"
+	"info-bot-go/internal/stars"
 	"info-bot-go/internal/stats"
 )
 
@@ -37,6 +38,7 @@ type Deps struct {
 	DostupCatalog *dostup.CatalogStore     // локальный каталог распорядителей (может быть nil)
 	DostupRatings *dostup.RatingsStore     // персистентные рейтинги органов (может быть nil)
 	FollowUps     *session.FollowUpThreads // гилки запросов для уточнений (может быть nil)
+	Stars         *stars.Store             // балансы кредитов монетизации (nil = бесплатно)
 }
 
 type (
@@ -84,8 +86,10 @@ func AllModules(deps *Deps) []Module {
 	ratingMod := NewRatingModule(deps)
 	privacyMod := NewPrivacyModule(deps)
 	analyzeMod := NewAnalyzeModule(deps)
+	starsMod := NewStarsModule(deps)
 
 	voiceMod.SetBugReportModule(bugReportMod)
+	analyzeMod.SetStarsModule(starsMod)
 	voiceMod.SetFollowUpModule(followUpMod)
 	voiceMod.SetAnalyzeModule(analyzeMod)
 	bugReportMod.SetAnalyzeModule(analyzeMod)
@@ -114,6 +118,7 @@ func AllModules(deps *Deps) []Module {
 		ratingMod,
 		privacyMod,
 		analyzeMod,
+		starsMod,
 	}
 }
 
