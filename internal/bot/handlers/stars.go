@@ -1,12 +1,24 @@
 package handlers
 
-// Монетизация через Telegram Stars — модуль-каркас (ТЗ «Монетизация»).
+// Монетизация через Telegram Stars — модуль-каркас (ТЗ «Монетизация»),
+// он же ЕДИНЫЙ РОУТЕР ПЛАТЕЖЕЙ для всего бота.
+//
+// Модуль регистрируется ПОСЛЕДНИМ, а telebot хранит обработчики в map —
+// второй Handle на тот же endpoint перезаписывает первый. Поэтому все
+// pre_checkout_query / successful_payment (и донаты /support, и покупка
+// кредитов) обязаны обрабатываться здесь, в одном месте, с маршрутизацией
+// по payload:
+//   • support_<amount>    — добровольный донат (работает ВСЕГДА, независимо
+//     от STARS_ENABLED — это не монетизация, а поддержка проекта);
+//   • analyze:<uid>:<credits>:<ts> — покупка пакета розборов (гейтится
+//     STARS_ENABLED).
 //
 // ПОКА ВЫКЛЮЧЕНО: cfg.StarsEnabled = false (по умолчанию). В этом режиме:
 //   • /buy отвечает «оплата ещё не включена»;
 //   • гейт в analyze не работает — розборы бесплатны, как раньше;
-//   • pre-checkout на всякий случай отклоняется (инвойсов мы не создаём,
-//     но если кто-то пришлёт старую ссылку — Stars не спишутся).
+//   • донаты /support работают как раньше (это регрессия-фикс: из-за
+//     перезаписи обработчиков они на время сломались);
+//   • pre-checkout покупок отклоняется (Stars возвращаются пользователю).
 //
 // ВКЛЮЧЕНИЕ (когда пользователей станет достаточно): STARS_ENABLED=true
 // в .env + рестарт. Дальше всё автоматически:
@@ -19,11 +31,15 @@ package handlers
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	tb "gopkg.in/telebot.v3"
 
 	"info-bot-go/internal/stars"
 )
+
+// SupportPayloadPrefix — префикс payload донатов /support.
+const SupportPayloadPrefix = "support_"
 
 // StarsModule — модуль монетизации (24-й).
 type StarsModule struct {
@@ -90,26 +106,65 @@ func (m *StarsModule) handleBuy(c tb.Context) error {
 	return c.Send(text, kb)
 }
 
-// handlePreCheckout — подтверждение pre_checkout_query.
+// payloadKind — тип платежа по payload.
+type payloadKind int
+
+const (
+	payloadUnknown payloadKind = iota // не наш формат — отклоняем
+	payloadSupport                    // донат /support: support_<amount>
+	payloadAnalyze                    // покупка кредитов: analyze:uid:credits:ts
+)
+
+// classifyPayload определяет тип платежа по полезной нагрузке инвойса.
+func classifyPayload(p string) payloadKind {
+	if strings.HasPrefix(p, SupportPayloadPrefix) {
+		return payloadSupport
+	}
+	if _, _, ok := stars.ParsePayload(p); ok {
+		return payloadAnalyze
+	}
+	return payloadUnknown
+}
+
+// preCheckoutDecision решает, принимать ли оплату на этапе pre-checkout.
+// Чистая функция (без I/O) — чтобы покрыть тестами регрессию с донатами.
+// Возвращает (принять, сообщение об ошибке для пользователя).
+func preCheckoutDecision(starsEnabled bool, pack int, payload string, senderID int64) (bool, string) {
+	switch classifyPayload(payload) {
+	case payloadSupport:
+		// Донаты — добровольная поддержка, работают всегда.
+		return true, ""
+	case payloadAnalyze:
+		if !starsEnabled {
+			return false, "Оплата ще не ввімкнена"
+		}
+		uid, credits, ok := stars.ParsePayload(payload)
+		if !ok || uid != senderID || credits != pack {
+			return false, "Рахунок застарів — надішліть /buy ще раз"
+		}
+		return true, ""
+	default:
+		return false, "Невідомий рахунок. Скористайтеся /support або /buy"
+	}
+}
+
+// handlePreCheckout — подтверждение pre_checkout_query (единый роутер).
+// Ответ должен уйти в течение 10 секунд, иначе Telegram отменит оплату.
 func (m *StarsModule) handlePreCheckout(c tb.Context) error {
 	q := c.PreCheckoutQuery()
 	if q == nil {
 		return nil
 	}
-	// Отключённая монетизация: отказ (Stars возвращаются пользователю).
-	if !m.deps.Cfg.StarsEnabled || m.deps.Stars == nil {
-		return c.Accept("Оплата ще не ввімкнена")
-	}
-	// Payload валиден и совпадает с покупателем.
-	uid, credits, ok := stars.ParsePayload(q.Payload)
-	if !ok || uid != q.Sender.ID || credits != m.deps.Cfg.StarsAnalyzePack {
-		log.Printf("[STARS] pre-checkout отклонён: payload=%q from=%d", q.Payload, q.Sender.ID)
-		return c.Accept("Рахунок застарів — надішліть /buy ще раз")
+	ok, errMsg := preCheckoutDecision(m.deps.Cfg.StarsEnabled, m.deps.Cfg.StarsAnalyzePack, q.Payload, q.Sender.ID)
+	if !ok {
+		log.Printf("[STARS] pre-checkout отклонён: payload=%q from=%d: %s", q.Payload, q.Sender.ID, errMsg)
+		return c.Accept(errMsg)
 	}
 	return c.Accept()
 }
 
-// handlePaid — successful_payment: зачисление кредитов.
+// handlePaid — successful_payment (единый роутер): донаты благодарим
+// и рапортуем админу, покупки кредитов зачисляем на баланс.
 func (m *StarsModule) handlePaid(c tb.Context) error {
 	msg := c.Message()
 	if msg == nil || msg.Payment == nil {
@@ -119,13 +174,39 @@ func (m *StarsModule) handlePaid(c tb.Context) error {
 	log.Printf("[STARS] successful_payment from=%d total=%d %s payload=%q charge=%s",
 		msg.Sender.ID, p.Total, p.Currency, p.Payload, p.TelegramChargeID)
 
+	switch classifyPayload(p.Payload) {
+	case payloadSupport:
+		return m.donationPaid(c, p)
+	case payloadAnalyze:
+		return m.creditsPaid(c, p)
+	default:
+		log.Printf("[STARS] неизвестный payload %q — оплата без зачисления", p.Payload)
+		return c.Send("⚠️ Не вдалося визначити тип платежу. Напишіть адміністру — розберемося вручну.")
+	}
+}
+
+// donationPaid — успешный донат /support: «спасибо» + уведомление админу.
+// Дубликаты апдейта Telegram (повторная доставка) пропускаем молча.
+func (m *StarsModule) donationPaid(c tb.Context, p *tb.Payment) error {
+	if m.deps.Stars != nil && !m.deps.Stars.ChargeIfNew(p.TelegramChargeID) {
+		log.Printf("[STARS] дубликат доната %s — пропуск", p.TelegramChargeID)
+		return nil
+	}
+	_ = c.Send("🎉 *Дякуємо за підтримку!*\n\nТвій внесок допоможе проекту стати сильнішим. 💪", tb.ModeMarkdown)
+	m.notifyAdmin(fmt.Sprintf("💰 *НОВИЙ ДОНАТ!*\n\n💎 Сума: *%d 🌟*\n👤 Від: %s (ID: %d)",
+		p.Total, c.Sender().FirstName, c.Sender().ID))
+	return nil
+}
+
+// creditsPaid — успешная покупка пакета розборов: зачисление кредитов.
+func (m *StarsModule) creditsPaid(c tb.Context, p *tb.Payment) error {
 	if !m.deps.Cfg.StarsEnabled || m.deps.Stars == nil {
 		log.Printf("[STARS] оплата пришла при выключенной монетизации — кредиты не начислены")
 		return c.Send("⚠️ Оплату отримано, але налаштування бота не містять монетизації. Напишіть адміністру — кредити нарахуємо вручну.")
 	}
 
 	uid, credits, ok := stars.ParsePayload(p.Payload)
-	if !ok || uid != msg.Sender.ID {
+	if !ok || uid != c.Sender().ID {
 		log.Printf("[STARS] payload не прошёл валидацию — оплата без зачисления")
 		return c.Send("⚠️ Не вдалося зіставити платіж з акаунтом. Напишіть адміністру — повернемо кредити вручну.")
 	}
@@ -138,6 +219,18 @@ func (m *StarsModule) handlePaid(c tb.Context) error {
 	}
 	balance := m.deps.Stars.Balance(uid)
 	log.Printf("[STARS] начислено %d кредитов user=%d, баланс=%d", credits, uid, balance)
+	m.notifyAdmin(fmt.Sprintf("🛒 *ПОКУПКА РОЗБОРІВ!*\n\n💎 %d ⭐ → %d кредитів\n👤 Від: %s (ID: %d)\n💰 Баланс: %d",
+		m.deps.Cfg.StarsAnalyzePrice, credits, c.Sender().FirstName, uid, balance))
 
 	return c.Send(fmt.Sprintf("✅ Оплату отримано! Нараховано %d розборів.\n\nВаш баланс: %d ⭐️-кредитів\n\nПодивіться відповідь органу — /analyze", credits, balance))
+}
+
+// notifyAdmin — уведомление владельцу о платёжном событии (донат/покупка).
+func (m *StarsModule) notifyAdmin(text string) {
+	if m.deps.Cfg.AdminID == 0 {
+		return
+	}
+	if _, err := m.bot.Send(tb.ChatID(m.deps.Cfg.AdminID), text, tb.ModeMarkdown); err != nil {
+		log.Printf("[STARS] уведомление админу не ушло: %v", err)
+	}
 }

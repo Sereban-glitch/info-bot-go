@@ -63,21 +63,11 @@ func (m *SupportModule) Register() {
 		return c.Send("✍️ Введіть кількість зірок (1-10000):")
 	}))
 
-	m.bot.Handle(tb.OnCheckout, func(c tb.Context) error {
-		return c.Accept()
-	})
-
-	m.bot.Handle(tb.OnPayment, safeHandler("payment", func(c tb.Context) error {
-		_ = c.Send("🎉 *Дякуємо за підтримку!*\n\nТвій внесок допоможе проекту стати сильнішим. 💪", tb.ModeMarkdown)
-
-		payment := c.Message().Payment
-		if payment != nil && m.deps.Cfg.AdminID != 0 {
-			adminText := fmt.Sprintf("💰 *НОВИЙ ДОНАТ!*\n\n💎 Сума: *%d 🌟*\n👤 Від: %s (ID: %d)",
-				payment.Total, c.Sender().FirstName, c.Sender().ID)
-			_, _ = m.bot.Send(tb.ChatID(m.deps.Cfg.AdminID), adminText, tb.ModeMarkdown)
-		}
-		return nil
-	}))
+	// ВАЖНО: pre_checkout_query и successful_payment здесь НЕ регистрируем.
+	// telebot хранит обработчики в map, и модуль stars (регистрируется
+	// последним) перезаписал бы их. Единый роутер платежей — в stars.go:
+	// payload «support_<сумма>» он благодарит донатера и уведомляет админа,
+	// payload «analyze:…» — зачисляет купленные кредиты.
 }
 
 func (m *SupportModule) sendStarsInvoice(c tb.Context, amount int) error {
