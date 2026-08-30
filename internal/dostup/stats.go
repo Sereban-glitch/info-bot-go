@@ -34,6 +34,10 @@ type bodyStatsEntry struct {
 
 const bodyStatsTTL = time.Hour
 
+// catalogPageDelay — пауза между страницами каталога (вежливость к порталу).
+// Вынесена в переменную, чтобы тесты могли её обнулять.
+var catalogPageDelay = 700 * time.Millisecond
+
 var (
 	bodyStatsMu    sync.Mutex
 	bodyStatsCache = map[string]bodyStatsEntry{}
@@ -150,14 +154,22 @@ func (c *Client) RefreshBodyStats(slug string) (*BodyStats, error) {
 }
 
 // SyncCatalog выкачивает полный каталог портала постранично.
-// Секции: "" (все без региона — центральные), коды регионов портала.
-// Возвращает собранный каталог; между страницами — пауза для rate-limit.
+//
+// После редизайна портала (конец августа 2026) структура адрес изменилась:
+//   - центральный раздел /body/list/?page=N больше не существует (HTTP 404);
+//   - полный список всех органов живёт на /body?page=N (по 100 на страницу);
+//   - региональные листинги /body/list/<region>?page=N работают как раньше.
+//
+// Поэтому синхронизация двухфазная: сначала регионы (каждый орган получает
+// свой регион), затем общий список — органы, не встретившиеся в регионах,
+// считаются центральными (Region=""). Повторяющиеся слаги пропускаются:
+// регион, присвоенный в фазе 1, не перетирается общим списком.
 func (c *Client) SyncCatalog() (*Catalog, error) {
 	cat := &Catalog{}
 	seen := map[string]bool{}
 
-	sections := append([]string{""}, RegionCodes()...)
-	for _, region := range sections {
+	// Фаза 1: региональные листинги.
+	for _, region := range RegionCodes() {
 		for page := 1; page <= 60; page++ {
 			path := "/body/list/" + region + fmt.Sprintf("?page=%d", page)
 			html, code, err := c.get(path)
@@ -180,8 +192,35 @@ func (c *Client) SyncCatalog() (*Catalog, error) {
 					cat.Bodies = append(cat.Bodies, b)
 				}
 			}
-			time.Sleep(700 * time.Millisecond) // вежливость к rate-limit портала
+			time.Sleep(catalogPageDelay) // вежливость к rate-limit портала
 		}
+	}
+
+	// Фаза 2: общий список /body?page=N — добирает центральные органы
+	// и новые органы, добавленные порталом после редизайна.
+	for page := 1; page <= 60; page++ {
+		path := fmt.Sprintf("/body?page=%d", page)
+		html, code, err := c.get(path)
+		if err != nil {
+			return nil, fmt.Errorf("dostup: страница каталога (общая) p%d: %w", page, err)
+		}
+		if code != 200 {
+			return nil, fmt.Errorf("dostup: страница каталога (общая) p%d: HTTP %d", page, code)
+		}
+		if isRateLimited(html) {
+			return nil, ErrRateLimited
+		}
+		bodies := parseCatalogPage(html, "")
+		if len(bodies) == 0 {
+			break // список закончился
+		}
+		for _, b := range bodies {
+			if !seen[b.Slug] {
+				seen[b.Slug] = true
+				cat.Bodies = append(cat.Bodies, b)
+			}
+		}
+		time.Sleep(catalogPageDelay) // вежливость к rate-limit портала
 	}
 	return cat, nil
 }
