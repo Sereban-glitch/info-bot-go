@@ -400,7 +400,7 @@ func (m *DostupModule) askSignature(c tb.Context) error {
 	if current != "" {
 		curNote = fmt.Sprintf("\n📌 Зараз: %s", htmlEscape(current))
 	}
-	return c.Send(fmt.Sprintf("✍️ <b>Як підписати ваш запит?</b>\n\nВведіть ім'я та прізвище (наприклад: <i>Іван Петренко</i>) — саме так буде підписано лист до органу.%s\n\nℹ️ Згідно зі ст. 19 ЗУ «Про доступ до публічної інформації» запитувач має бути названий — без імені орган може відмовити у відповіді.\n🔒 Акаунт на порталі лишається технічним («Громадський моніторинг»), але лист підписано вашим ім'ям.\n📖 Текст запиту разом із підписом буде опубліковано на відкритій сторінці запиту.", curNote), tb.ModeHTML)
+	return c.Send(fmt.Sprintf("✍️ <b>Як підписати ваш запит?</b>\n\nВведіть ім'я так, як має виглядати підпис у листі до органу. Це може бути:\n•\u00a0повне ім'я — <i>Іван Петренко</i>;\n•\u00a0лише ім'я — <i>Віктор</i> (прізвище не обов'язкове);\n•\u00a0скоро́чено — <i>І. Петренко</i>.%s\n\n⚠️ <b>Важливо:</b> підпис має бути вашим <b>справжнім ім'ям</b>. Вигадане ім'я дає органу право не відповідати (ст. 19 ЗУ «Про доступ до публічної інформації»), а систематичні фейкові підписи можуть призвести до блокування спільного акаунта на порталі.\n🔒 Акаунт на порталі лишається технічним («Громадський моніторинг»), але лист підписано вашим ім'ям.\n📖 Текст запиту разом із підписом буде опубліковано на відкритій сторінці запиту.", curNote), tb.ModeHTML)
 }
 
 // HandleText — обработка текстовых шагов dostup-потока.
@@ -416,25 +416,14 @@ func (m *DostupModule) HandleText(c tb.Context, step string, text string) (bool,
 	case "dostup:ask_signature":
 		name := strings.Join(strings.Fields(text), " ")
 		if utf8RuneCount(name) < 2 {
-			return true, c.Send("❌ Ім'я занадто коротке. Введіть ім'я та прізвище (наприклад: Іван Петренко):")
+			return true, c.Send("❌ Ім'я занадто коротке. Введіть підпис (наприклад: Віктор або Іван Петренко):")
 		}
 		if utf8RuneCount(name) > 80 {
-			return true, c.Send("❌ Занадто довге ім'я (до 80 символів). Спробуйте ще раз:")
+			return true, c.Send("❌ Занадто довгий підпис (до 80 символів). Спробуйте ще раз:")
 		}
 		// FullName хранит подпись в точности как ввёл пользователь;
 		// parts обновляем для совместимости (профиль, веб-дашборд).
-		sess.Profile.FullName = name
-		words := strings.Fields(name)
-		if len(words) == 1 {
-			sess.Profile.FirstName = words[0]
-		} else if len(words) == 2 {
-			sess.Profile.FirstName = words[0]
-			sess.Profile.LastName = words[1]
-		} else {
-			sess.Profile.FirstName = words[0]
-			sess.Profile.LastName = words[len(words)-1]
-			sess.Profile.MiddleName = strings.Join(words[1:len(words)-1], " ")
-		}
+		applySignature(sess, name)
 		sess.Step = "dostup:confirm"
 		saveSession(m.deps, c)
 		_ = c.Send(fmt.Sprintf("✅ Підпис оновлено: <b>%s</b>", htmlEscape(name)), tb.ModeHTML)
@@ -450,6 +439,90 @@ func utf8RuneCount(s string) int {
 		n++
 	}
 	return n
+}
+
+// resolveByTitle ищет в «Моїх запитах» портала свежий запрос по теме —
+// восстановление после ErrInvalidResponse (портал принял запрос, но
+// подтверждение не распарсилось). Пауза даёт порталу время «увидеть»
+// новый запрос в списке. Возвращает nil, если поиск не дал результата.
+func (m *DostupModule) resolveByTitle(title string) *dostup.RequestInfo {
+	if m.deps.Dostup == nil {
+		return nil
+	}
+	time.Sleep(3 * time.Second) // не дёргаем портал сразу после неудачи
+	reqs, err := m.deps.Dostup.MyRequestsFull()
+	if err != nil {
+		log.Printf("[DOSTUP] восстановление: «Мої запити» недоступны: %v", err)
+		return nil
+	}
+	lp := strings.ToLower(title)
+	if len(lp) > 30 {
+		lp = lp[:30]
+	}
+	for _, pr := range reqs {
+		if strings.Contains(strings.ToLower(pr.Title), lp) &&
+			m.deps.SentLog.FindByMessageID("dostup:"+pr.Slug) == nil {
+			info := pr.RequestInfo
+			return &info
+		}
+	}
+	return nil
+}
+
+// recordPendingSubmit фиксирует попытку, чей результат не подтверждён:
+// фоновая синхронизация сверит «чужие» запросы портала с этими попытками
+// и приписывает запрос настоящему автору.
+func (m *DostupModule) recordPendingSubmit(c tb.Context, sess *session.SessionData, title string) {
+	if m.deps.PendingSubmits == nil {
+		return
+	}
+	m.deps.PendingSubmits.Add(PendingSubmit{
+		UserID: c.Sender().ID,
+		ChatID: c.Chat().ID,
+		Title:  title,
+		Organ:  sess.Draft.RecipientName,
+		At:     time.Now(),
+	})
+	log.Printf("[DOSTUP] попытка зафиксирована как неподтверждённая: %q (user %d)", title, c.Sender().ID)
+}
+
+// applySignature обновляет подпись пользователя: FullName хранит точный
+// ввод (как пользователь хочет видеть подпись: «Віктор», «Іван Петренко»,
+// «І. Петренко»), parts синхронизируются для совместимости (профиль, веб).
+func applySignature(sess *session.SessionData, name string) {
+	sess.Profile.FullName = name
+	words := strings.Fields(name)
+	switch {
+	case len(words) == 1:
+		sess.Profile.FirstName = words[0]
+		sess.Profile.LastName = ""
+		sess.Profile.MiddleName = ""
+	case len(words) == 2:
+		sess.Profile.FirstName = words[0]
+		sess.Profile.LastName = words[1]
+		sess.Profile.MiddleName = ""
+	default:
+		sess.Profile.FirstName = words[0]
+		sess.Profile.LastName = words[len(words)-1]
+		sess.Profile.MiddleName = strings.Join(words[1:len(words)-1], " ")
+	}
+}
+
+// validEmail — минимальная проверка адреса (локальная@часть.домена),
+// без регулярных выражений. Отсекает мусор вроде «@» или «a b@c.d»,
+// который иначе попадает в письма органам («…поштою: @»).
+func validEmail(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" || strings.ContainsAny(s, " \t\r\n") {
+		return false
+	}
+	at := strings.IndexByte(s, '@')
+	if at <= 0 || at != strings.LastIndexByte(s, '@') {
+		return false
+	}
+	domain := s[at+1:]
+	dot := strings.LastIndexByte(domain, '.')
+	return dot > 0 && dot < len(domain)-1
 }
 
 // handleSubmit — финальная отправка через портал.
@@ -491,8 +564,27 @@ func (m *DostupModule) handleSubmit(c tb.Context) error {
 		if errors.Is(err, dostup.ErrRateLimited) {
 			return c.Edit("⏳ Портал обмежив частоту запитів («Забагато запитів»).\nНатисніть кнопку повторно через 3–5 хвилин — чернетка збережена.")
 		}
+		// «Неожиданный ответ сервера»: финальный POST ушёл на портал, но
+		// подтвердить создание запроса не удалось (подтверждение не
+		// распарсилось, «Мої запити» был недоступен или ограничен по частоте).
+		// Запрос при этом МОГ создаться — реальный случай 30.08.2026:
+		// бот показал пользователю ошибку, а запрос опубликовался, и
+		// синхронизация приписала его владельцу. Пробуем найти запрос
+		// в «Моїх запитах» по теме: если он там — считаем отправку успешной.
+		if errors.Is(err, dostup.ErrInvalidResponse) {
+			if resolved := m.resolveByTitle(title); resolved != nil {
+				log.Printf("[DOSTUP] отправка восстановлена через «Мої запити»: %s (ошибка была: %v)", resolved.Slug, err)
+				info, err = resolved, nil
+			}
+		}
+	}
+	if err != nil {
 		log.Printf("[DOSTUP] submit error: %v", err)
-		return c.Edit(fmt.Sprintf("❌ Помилка надсилання: %s\n\nЧернетка збережена, спробуйте ще раз.", err))
+		// Даже при ошибке запрос мог создаться на портале: фиксируем попытку,
+		// чтобы фоновая синхронизация приписала обнаруженный запрос настоящему
+		// автору и сообщила ему об успехе, а не владельцу.
+		m.recordPendingSubmit(c, sess, title)
+		return c.Edit(fmt.Sprintf("❌ Помилка надсилання: %s\n\nЧернетка збережена, спробуйте ще раз. Якщо портал обмежив частоту — повторіть через 3–5 хвилин.", err))
 	}
 
 	// Страховка от чужого адреса (ТЗ №5, фикс спама): если портал вернул
@@ -641,7 +733,9 @@ func buildDostupBody(sess *session.SessionData) string {
 	}
 	b.WriteString("З повагою,\n")
 	b.WriteString(name)
-	if sess.Profile.Email != "" {
+	// Строка почты — только если адрес реально похож на адрес: в старых
+	// профилях встречался мусор («@»), который попадал в письма органам.
+	if sess.Profile.Email != "" && validEmail(sess.Profile.Email) {
 		b.WriteString("\nВідповідь прошу надіслати електронною поштою: " + sess.Profile.Email)
 	}
 	if sess.Profile.PostalAddress != "" {

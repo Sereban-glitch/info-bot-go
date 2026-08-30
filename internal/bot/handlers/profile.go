@@ -15,6 +15,7 @@ type ProfileModule struct {
 	deps    *Deps
 	bot     *tb.Bot
 	skipBtn *tb.InlineButton
+	signBtn *tb.InlineButton
 }
 
 func NewProfileModule(deps *Deps) *ProfileModule {
@@ -40,6 +41,16 @@ func (m *ProfileModule) Register() {
 	}
 	m.skipBtn = skipBtn // store for use in keyboards
 	m.bot.Handle(skipBtn, safeHandler("profile_skip", m.handleSkip))
+
+	// Кнопка «Змінити підпис» — отдельный вопрос: подпись в письмах
+	// (FullName) может отличаться от полных ФИО, и пользователь имеет
+	// право в любой момент заменить её на короткую (только имя).
+	signBtn := &tb.InlineButton{
+		Unique: "psign",
+		Text:   "✍️ Змінити підпис",
+	}
+	m.signBtn = signBtn
+	m.bot.Handle(signBtn, safeHandler("profile_sign", m.handleSignBtn))
 }
 
 func (m *ProfileModule) handleProfile(c tb.Context) error {
@@ -79,15 +90,30 @@ func (m *ProfileModule) HandleText(c tb.Context, step string, text string) (bool
 		return true, m.askNextField(c, sess)
 
 	case "profile:email":
-		if text != "" && !strings.Contains(text, "@") {
-			return true, c.Send("❌ Некоректний email. Введіть ще раз:")
+		if text != "" && !validEmail(text) {
+			return true, c.Send("❌ Некоректний email (приклад: ivan@gmail.com). Введіть ще раз або натисніть «Пропустити»:")
 		}
 		sess.Profile.Email = text
 		if text == "" {
 			sess.Draft.UseSharedMailbox = true
 		}
-		sess.Profile.FullName = session.ProfileDisplayName(sess.Profile)
+		if sess.Profile.FullName == "" {
+			sess.Profile.FullName = session.ProfileDisplayName(sess.Profile)
+		}
 		saveSession(m.deps, c)
+		return true, m.showProfile(c, sess)
+
+	case "profile:signature":
+		name := strings.Join(strings.Fields(text), " ")
+		if utf8RuneCount(name) < 2 {
+			return true, c.Send("❌ Підпис занадто короткий. Введіть підпис (наприклад: Віктор або Іван Петренко):")
+		}
+		if utf8RuneCount(name) > 80 {
+			return true, c.Send("❌ Занадто довгий підпис (до 80 символів). Спробуйте ще раз:")
+		}
+		applySignature(sess, name)
+		saveSession(m.deps, c)
+		_ = c.Send(fmt.Sprintf("✅ Підпис у листах оновлено: <b>%s</b>\n\nНаступні запити до органів підписуватимуться так.", htmlEscape(name)), tb.ModeHTML)
 		return true, m.showProfile(c, sess)
 	}
 	return false, nil
@@ -163,12 +189,22 @@ func (m *ProfileModule) askNextField(c tb.Context, sess *session.SessionData) er
 
 func (m *ProfileModule) showProfile(c tb.Context, sess *session.SessionData) error {
 	sess.Step = "idle"
-	sess.Profile.FullName = session.ProfileDisplayName(sess.Profile)
+	// ВАЖНО: не перезаписываем FullName из частей! FullName — это подпись
+	// пользователя, которую он мог нарочно сделать короткой («Віктор») или
+	// сокращённой («І. Петренко») через «Змінити подпис». Пересборка из
+	// Прізвище+Ім'я молча ломала бы её при каждом просмотре профиля.
+	if sess.Profile.FullName == "" {
+		sess.Profile.FullName = session.ProfileDisplayName(sess.Profile)
+	}
 	saveSession(m.deps, c)
 
 	name := session.ProfileDisplayName(sess.Profile)
 	if name == "" {
 		name = "не вказано"
+	}
+	sign := session.SignatureName(sess.Profile)
+	if sign == "" {
+		sign = "не вказано — бот запитає перед відправкою запиту"
 	}
 	email := sess.Profile.Email
 	if email == "" {
@@ -179,29 +215,52 @@ func (m *ProfileModule) showProfile(c tb.Context, sess *session.SessionData) err
 		addr = "не вказано"
 	}
 
-	text := fmt.Sprintf("✅ *Профіль*\n\n👤 Ім'я: %s\n📧 Email: %s\n📍 Адреса: %s", name, email, addr)
+	text := fmt.Sprintf("✅ *Профіль*\n\n👤 Ім'я: %s\n✍️ Підпис у листах: %s\n📧 Email: %s\n📍 Адреса: %s\n\n_Підпис можна змінити кнопкою нижче — наприклад, лише ім'я, без прізвища._", name, sign, email, addr)
 
 	// Edit button
 	editBtn := &tb.InlineButton{
 		Unique: "pedit",
-		Text:   "✏️ Редагувати",
+		Text:   "✏️ Редагувати дані",
 	}
 	m.bot.Handle(editBtn, safeHandler("profile_edit", m.handleEdit))
 
 	kb := &tb.ReplyMarkup{}
-	kb.InlineKeyboard = [][]tb.InlineButton{{*editBtn}}
+	var rows [][]tb.InlineButton
+	if m.signBtn != nil {
+		rows = append(rows, []tb.InlineButton{*m.signBtn})
+	}
+	rows = append(rows, []tb.InlineButton{*editBtn})
+	kb.InlineKeyboard = rows
 	return c.Send(text, kb, tb.ModeMarkdown)
 }
 
 func (m *ProfileModule) handleEdit(c tb.Context) error {
 	_ = c.Respond()
 	sess := c.Get("session").(*session.SessionData)
-	// Reset profile to allow re-entry
+	// Reset profile to allow re-entry. FullName тоже сбрасываем: после
+	// полного переввода данных подпись пересоберётся из новых частей
+	// (в конце showProfile заполнит её, только если пуста).
 	sess.Profile.FirstName = ""
 	sess.Profile.LastName = ""
 	sess.Profile.MiddleName = ""
 	sess.Profile.PostalAddress = ""
 	sess.Profile.Email = ""
+	sess.Profile.FullName = ""
 	saveSession(m.deps, c)
 	return m.askNextField(c, sess)
+}
+
+// handleSignBtn — кнопка «✍️ Змінити підпис»: спрашивает новую подпись
+// для писем (можно только имя, можно сокращённо).
+func (m *ProfileModule) handleSignBtn(c tb.Context) error {
+	_ = c.Respond()
+	sess := c.Get("session").(*session.SessionData)
+	sess.Step = "profile:signature"
+	saveSession(m.deps, c)
+	current := session.SignatureName(sess.Profile)
+	curNote := ""
+	if current != "" {
+		curNote = fmt.Sprintf("\n📌 Зараз: %s", htmlEscape(current))
+	}
+	return c.Send(fmt.Sprintf("✍️ *Як підписати листи до органів?*\n\nВведіть підпис — саме так буде підписано ваші запити. Це може бути:\n• повне ім'я — Іван Петренко;\n• лише ім'я — Віктор (прізвище не обов'язкове);\n• скорочено — І. Петренко.%s\n\n⚠️ Підпис має бути вашим *справжнім ім'ям*: вигадане ім'я дає органу право не відповідати (ст. 19 ЗУ «Про доступ до публічної інформації»).", curNote), tb.ModeMarkdown)
 }

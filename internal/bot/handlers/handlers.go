@@ -38,7 +38,11 @@ type Deps struct {
 	DostupCatalog *dostup.CatalogStore     // локальный каталог распорядителей (может быть nil)
 	DostupRatings *dostup.RatingsStore     // персистентные рейтинги органов (может быть nil)
 	FollowUps     *session.FollowUpThreads // гилки запросов для уточнений (может быть nil)
-	Stars         *stars.Store             // балансы кредитов монетизации (nil = бесплатно)
+	// PendingSubmits — попытки отправки, чей результат не удалось подтвердить
+	// (портал мог принять запрос). Синхронизация ищет автора среди них,
+	// прежде чем приписывать «чужой» запрос владельцу. Может быть nil.
+	PendingSubmits *PendingSubmits
+	Stars          *stars.Store // балансы кредитов монетизации (nil = бесплатно)
 }
 
 type (

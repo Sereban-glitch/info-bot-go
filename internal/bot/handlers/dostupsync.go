@@ -145,8 +145,21 @@ func (w *DostupSync) SyncNow(verbose bool) string {
 		if w.deps.SentLog.FindByMessageID(msgID) != nil {
 			continue
 		}
-		// Запрос, поданный вне бота: приписываем владельцу (AdminID)
+		// Кто автор «неизвестного» запроса?
+		// 1) Недавняя отправка через бот, которую бот не смог подтвердить
+		//    (портал принял запрос, но подтверждение не распарсилось) —
+		//    приписываем настоящему автору и сообщаем ему об успехе.
+		// 2) Только если попытки нет — запрос подан вручную вне бота,
+		//    приписываем владельцу (AdminID), как раньше.
+		var pend *PendingSubmit
+		if w.deps.PendingSubmits != nil {
+			pend = w.deps.PendingSubmits.TakeMatching(pr.Title, 24*time.Hour)
+		}
 		owner := w.deps.Cfg.AdminID
+		entryUser, entryChat := owner, owner
+		if pend != nil {
+			entryUser, entryChat = pend.UserID, pend.ChatID
+		}
 		name := pr.BodyName
 		if name == "" {
 			name = "dostup.org.ua"
@@ -157,8 +170,8 @@ func (w *DostupSync) SyncNow(verbose bool) string {
 		}
 		_ = w.deps.SentLog.Append(sentlog.SentEntry{
 			MessageID:      msgID,
-			ChatID:         owner,
-			UserID:         owner,
+			ChatID:         entryChat,
+			UserID:         entryUser,
 			RecipientName:  name,
 			RecipientEmail: "dostup.org.ua",
 			Subject:        pr.Title,
@@ -169,7 +182,13 @@ func (w *DostupSync) SyncNow(verbose bool) string {
 			Delivered:      true,
 		})
 		newCount++
-		log.Printf("[DOSTUP-SYNC] +запрос с портала: %s (%s)", pr.Title, pr.Slug)
+		if pend != nil {
+			log.Printf("[DOSTUP-SYNC] +запрос с портала: %s (%s) — автор восстановлен: пользователь %d", pr.Title, pr.Slug, pend.UserID)
+			deadline := addWorkingDays(time.Now(), 5).Format("02.01.2006")
+			w.sendNotify(pend.UserID, fmt.Sprintf("✅ <b>Ваш запит опубліковано на «Доступ до правди»!</b>\n\nРаніше я показав помилку надсилання — вибачте: запит усе ж пройшов. Ось він:\n\n📂 «%s»\n🏛 %s\n\n🔗 <b>Публічне посилання:</b>\n%s\n\n⏰ Дедлайн відповіді органу: <b>%s</b> (до 5 робочих днів).\nЯ повідомлю тут, коли орган надішле відповідь по суті. Статус будь-коли: /my", htmlEscape(pr.Title), htmlEscape(name), htmlLink(pr.URL), deadline))
+		} else {
+			log.Printf("[DOSTUP-SYNC] +запрос с портала: %s (%s)", pr.Title, pr.Slug)
+		}
 	}
 	if newCount > 0 {
 		report.WriteString(fmt.Sprintf("📥 Події з порталу: %d нов(их) запит(ів) синхронізовано.\n", newCount))

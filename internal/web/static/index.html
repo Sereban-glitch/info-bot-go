@@ -122,6 +122,86 @@ small { font-size: 13px; color: var(--tg-hint); }
   box-shadow: var(--shadow), 0 0 20px rgba(88,166,255,0.06);
 }
 
+/* ТЗ №9: публичная аналитика по темам */
+.analytics-title {
+  font-weight: 700;
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+.analytics-totals {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.analytics-chip {
+  flex: 1 1 30%;
+  min-width: 84px;
+  background: rgba(88,166,255,0.08);
+  border: 1px solid var(--tg-border);
+  border-radius: 10px;
+  padding: 8px 6px;
+  text-align: center;
+}
+.analytics-chip .num {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--tg-button);
+}
+.analytics-chip .lbl {
+  display: block;
+  font-size: 11px;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+.analytics-topic {
+  margin-bottom: 9px;
+}
+.analytics-topic-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.analytics-topic-head .t-name { font-weight: 600; }
+.analytics-topic-head .t-val { opacity: 0.75; }
+.analytics-bar-bg {
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(128,128,128,0.18);
+  overflow: hidden;
+}
+.analytics-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--tg-button), #58a6ff);
+  min-width: 3px;
+  transition: width 0.5s ease;
+}
+.analytics-section-label {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 12px 0 6px;
+}
+.analytics-organ {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--tg-border);
+}
+.analytics-organ:last-child { border-bottom: none; }
+.analytics-organ .o-name { overflow: hidden; text-overflow: ellipsis; }
+.analytics-organ .o-val { opacity: 0.7; white-space: nowrap; }
+.analytics-foot {
+  font-size: 11.5px;
+  opacity: 0.65;
+  margin-top: 10px;
+  line-height: 1.45;
+}
+
 /* ============================================
    TAB BAR (BOTTOM) — Glassmorphism Dark
    ============================================ */
@@ -832,6 +912,16 @@ small { font-size: 13px; color: var(--tg-hint); }
     <div class="response-date" id="last-response-date"></div>
   </div>
 
+  <!-- ТЗ №9: публичная аналитика по темам (агрегаты без ПД) -->
+  <div class="card" id="analytics-card" style="display:none;">
+    <div class="analytics-title">📊 Аналітика запитів громади</div>
+    <div class="analytics-totals" id="analytics-totals"></div>
+    <div id="analytics-topics"></div>
+    <div class="analytics-section-label" id="analytics-organs-label" style="display:none;">🏛 Найпопулярніші розпорядники</div>
+    <div id="analytics-organs"></div>
+    <div class="analytics-foot" id="analytics-foot"></div>
+  </div>
+
   <div class="quick-actions">
     <div class="quick-action-btn" onclick="switchTab('library')">
       <div class="quick-action-icon">✨</div>
@@ -1324,6 +1414,75 @@ function ratingCardEl(it) {
 }
 
 /* ============================================
+   ТЗ №9: ПУБЛИЧНАЯ АНАЛИТИКА ПО ТЕМАМ
+   Публичный эндпоинт, обычный fetch (как рейтинг).
+   ============================================ */
+let analyticsLoadedOnce = false;
+async function loadAnalytics(force) {
+  const card = document.getElementById('analytics-card');
+  if (!card) return;
+  if (analyticsLoadedOnce && !force) return; // данные не меняются каждое переключение вкладки
+  try {
+    const res = await fetch(API_BASE + '/api/analytics');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    if (!json.ok) throw new Error('api error');
+    const d = json.data;
+    if (!d || d.total === 0) {
+      // Нет данных — карточку не показываем (не пугаем пустотой)
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = '';
+    analyticsLoadedOnce = true;
+
+    // Итоги
+    document.getElementById('analytics-totals').innerHTML =
+      '<div class="analytics-chip"><span class="num">' + d.total + '</span><span class="lbl">запитів</span></div>' +
+      '<div class="analytics-chip"><span class="num" style="color:var(--c-green)">' + d.answered + '</span><span class="lbl">з відповідями</span></div>' +
+      '<div class="analytics-chip"><span class="num" style="color:var(--c-yellow)">' + d.awaiting + '</span><span class="lbl">очікують</span></div>';
+
+    // Темы: полосы с процентами (доля от общего числа)
+    const topics = document.getElementById('analytics-topics');
+    const maxReq = Math.max.apply(null, d.byTopic.map(function (t) { return t.requests; }));
+    topics.innerHTML = d.byTopic.map(function (t) {
+      const pct = maxReq > 0 ? Math.round(t.requests * 100 / maxReq) : 0;
+      const val = t.answered > 0
+        ? t.requests + ' запитів · ' + t.share + '% · ' + t.answered + ' з відповіддю'
+        : t.requests + ' запитів · ' + t.share + '%';
+      return '<div class="analytics-topic">' +
+        '<div class="analytics-topic-head"><span class="t-name">' + t.emoji + ' ' + escHtml(t.title) + '</span>' +
+        '<span class="t-val">' + escHtml(val) + '</span></div>' +
+        '<div class="analytics-bar-bg"><div class="analytics-bar-fill" style="width:' + pct + '%"></div></div>' +
+        '</div>';
+    }).join('');
+
+    // Топ органов
+    const organsEl = document.getElementById('analytics-organs');
+    const organsLabel = document.getElementById('analytics-organs-label');
+    if (d.topOrgans && d.topOrgans.length > 0) {
+      organsLabel.style.display = '';
+      organsEl.innerHTML = d.topOrgans.map(function (o) {
+        return '<div class="analytics-organ"><span class="o-name">' + escHtml(o.name) + '</span>' +
+          '<span class="o-val">' + o.requests + (o.answered > 0 ? ' · 📬 ' + o.answered : '') + '</span></div>';
+      }).join('');
+    } else {
+      organsLabel.style.display = 'none';
+      organsEl.innerHTML = '';
+    }
+
+    // Подвал: методология + источник
+    let foot = 'Агрегована статистика запитів, що пройшли через бота, — без персональних даних. ' +
+      'Теми розпізнаються автоматично.';
+    if (d.fetchedAt) foot += ' Станом на ' + new Date(d.fetchedAt).toLocaleDateString('uk-UA') + '.';
+    document.getElementById('analytics-foot').textContent = foot;
+  } catch (e) {
+    // Тихо: аналитика — необязательный блок обзора
+    console.error('analytics:', e);
+  }
+}
+
+/* ============================================
    API HELPER (aligned with Go bot endpoints)
    ============================================ */
 async function apiCall(path, options = {}) {
@@ -1436,6 +1595,9 @@ async function loadOverview() {
     // Render donut
     renderDonut(stats.replied || 0, stats.pending || 0, stats.overdue || 0, stats.total || 0);
   }
+
+  // ТЗ №9: публичная аналитика по темам (кэшируется до перезагрузки страницы)
+  loadAnalytics();
 
   // Load requests for deadline & last response
   const requests = await apiCall('/api/requests');

@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -827,4 +828,169 @@ func (s *Server) handleStarsInvoice(w http.ResponseWriter, r *http.Request) {
 		Price:   s.cfg.StarsAnalyzePrice,
 		Pack:    s.cfg.StarsAnalyzePack,
 	}})
+}
+
+// ---------------------------------------------------------------------------
+// Публичная аналитика по темам запросов (ТЗ №9, фаза 3.11 плана развития)
+// ---------------------------------------------------------------------------
+
+// AnalyticsTopicRow — агрегат по одной теме.
+type AnalyticsTopicRow struct {
+	ID       string  `json:"id"`
+	Emoji    string  `json:"emoji"`
+	Title    string  `json:"title"`
+	Requests int     `json:"requests"`
+	Answered int     `json:"answered"`
+	Share    float64 `json:"share"` // доля от общего числа запросов, %
+}
+
+// AnalyticsOrganRow — самый запрашиваемый орган (агрегат, без ПД).
+type AnalyticsOrganRow struct {
+	Name     string `json:"name"`
+	Requests int    `json:"requests"`
+	Answered int    `json:"answered"`
+}
+
+// AnalyticsMonthRow — запросы за месяц (тренд).
+type AnalyticsMonthRow struct {
+	Ym       string `json:"ym"` // «2026-08»
+	Requests int    `json:"requests"`
+}
+
+// AnalyticsResponse — ответ GET /api/analytics. Только агрегаты:
+// ни имён, ни идентификаторов пользователей, ни текстов запросов —
+// темы и счётчики. Эндпоинт публичный, как и /api/rating.
+type AnalyticsResponse struct {
+	Total     int                 `json:"total"`
+	Answered  int                 `json:"answered"`
+	Awaiting  int                 `json:"awaiting"`
+	AckOnly   int                 `json:"ackOnly"` // только авто-подтверждение, ответа ещё нет
+	ByTopic   []AnalyticsTopicRow `json:"byTopic"`
+	TopOrgans []AnalyticsOrganRow `json:"topOrgans"`
+	ByMonth   []AnalyticsMonthRow `json:"byMonth"`
+	FetchedAt string              `json:"fetchedAt,omitempty"`
+}
+
+// handleAnalytics — GET /api/analytics: агрегированная аналитика запросов
+// по темам (ТЗ №9). Публичный: персональных данных нет, только счётчики.
+func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{OK: false, Err: "method not allowed"})
+		return
+	}
+	resp := AnalyticsResponse{ByTopic: []AnalyticsTopicRow{}, TopOrgans: []AnalyticsOrganRow{}, ByMonth: []AnalyticsMonthRow{}}
+	if s.sentLog != nil {
+		entries := s.sentLog.ListAll()
+
+		topicCount := map[string]int{}
+		topicAnswered := map[string]int{}
+		organCount := map[string]int{}
+		organAnswered := map[string]int{}
+		monthCount := map[string]int{}
+		monthOrder := []string{}
+
+		for _, e := range entries {
+			// Пропускаем черновики/недоставленные: считаем только реально ушедшие
+			if !e.Delivered {
+				continue
+			}
+			answered := e.ReplyReceivedAt != ""
+			resp.Total++
+			if answered {
+				resp.Answered++
+			} else if e.AckAt != "" {
+				resp.AckOnly++
+			}
+
+			// Тема: предмет + орган дают достаточно контекста для классификации
+			organ := htmlUnescapeString(e.DostupBody)
+			if organ == "" {
+				organ = htmlUnescapeString(e.RecipientName)
+			}
+			topic := dostup.ClassifyTopic(e.Subject + " " + organ)
+			topicCount[topic.ID]++
+			if answered {
+				topicAnswered[topic.ID]++
+			}
+
+			if name := strings.TrimSpace(organ); name != "" {
+				key := strings.ToLower(name)
+				organCount[key]++
+				if answered {
+					organAnswered[key]++
+				}
+			}
+
+			// Месяц: первые 7 символов даты («2026-08»), любой формат ISO
+			if d := e.Date; len(d) >= 7 {
+				ym := d[:7]
+				if _, seen := monthCount[ym]; !seen {
+					monthOrder = append(monthOrder, ym)
+				}
+				monthCount[ym]++
+			}
+		}
+		resp.Awaiting = resp.Total - resp.Answered
+
+		// Темы: все известные + встретившиеся, сортировка по убыванию запросов
+		for _, topic := range dostup.Topics() {
+			n := topicCount[topic.ID]
+			if n == 0 {
+				continue
+			}
+			share := 0.0
+			if resp.Total > 0 {
+				share = math.Round(float64(n)*1000/float64(resp.Total)) / 10
+			}
+			resp.ByTopic = append(resp.ByTopic, AnalyticsTopicRow{
+				ID: topic.ID, Emoji: topic.Emoji, Title: topic.Title,
+				Requests: n, Answered: topicAnswered[topic.ID], Share: share,
+			})
+		}
+
+		// Топ органов: сортировка по числу запросов, берём 5
+		type organRow struct {
+			name               string
+			requests, answered int
+		}
+		var organs []organRow
+		for key, n := range organCount {
+			organs = append(organs, organRow{name: key, requests: n, answered: organAnswered[key]})
+		}
+		for i := 1; i < len(organs); i++ {
+			for j := i; j > 0 && organs[j].requests > organs[j-1].requests; j-- {
+				organs[j], organs[j-1] = organs[j-1], organs[j]
+			}
+		}
+		for i, o := range organs {
+			if i >= 5 {
+				break
+			}
+			resp.TopOrgans = append(resp.TopOrgans, AnalyticsOrganRow{Name: o.name, Requests: o.requests, Answered: o.answered})
+		}
+
+		// Месяцы: последние 6, по возрастанию (для мини-графика)
+		sort.Strings(monthOrder)
+		if len(monthOrder) > 6 {
+			monthOrder = monthOrder[len(monthOrder)-6:]
+		}
+		for _, ym := range monthOrder {
+			resp.ByMonth = append(resp.ByMonth, AnalyticsMonthRow{Ym: ym, Requests: monthCount[ym]})
+		}
+	}
+	resp.FetchedAt = time.Now().UTC().Format(time.RFC3339)
+	writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: resp})
+}
+
+// htmlUnescapeString — безопасный анэскейп HTML-сущностей в названиях органов
+// (старые записи журнала могли сохранить «здоров&#39;я» вместо «здоров'я»).
+func htmlUnescapeString(s string) string {
+	if !strings.Contains(s, "&") {
+		return s
+	}
+	repl := strings.NewReplacer(
+		"&#39;", "'", "&quot;", `"`, "&amp;", "&", "&lt;", "<", "&gt;", ">",
+		"&#x27;", "'", "&nbsp;", " ",
+	)
+	return repl.Replace(s)
 }

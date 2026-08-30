@@ -140,6 +140,9 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 		botInst.dostupRatings = ratingsStore
 		// Гилки запросов для уточнений (followup)
 		deps.FollowUps = session.NewFollowUpThreads(filepath.Join(sessDir(), "followup_threads.json"))
+		// Попытки отправки без подтверждения: синхронизация ищет автора
+		// «чужого» запроса среди них, прежде чем приписывать владельцу
+		deps.PendingSubmits = handlers.NewPendingSubmits(filepath.Join(sessDir(), "pending_submits.json"))
 		// Фоновая синхронизация бот ↔ портал
 		syncWorker := handlers.NewDostupSync(deps)
 		deps.DostupSync = syncWorker
