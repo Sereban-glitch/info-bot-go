@@ -48,12 +48,40 @@ var (
 // analysisMaxReplyLen — максимум символов текста ответа органа в запросе.
 const analysisMaxReplyLen = 8000
 
-// refusalAnalysisSystemPrompt — системная инструкция AI-юриста.
-//
-// Правовые якоря — только те статьи, в которых уверены (13, 17, 18, 22);
-// остальные статьи модель цитирует сама, но промпт требует ссылаться
-// лишь на то, в чём уверена.
+// refusalAnalysisSystemPrompt — системная инструкция AI-юриста (полный
+// разбор: вердикт + готовый документ одним ответом).
 func refusalAnalysisSystemPrompt() string {
+	return refusalSystemPrompt(true)
+}
+
+// refusalVerdictSystemPrompt — инструкция БЫСТРОГО этапа разбора:
+// только вердикт, без документа. Ответ короче — модель отвечает за
+// секунды, пользователь видит оценку почти сразу, а документ готовится
+// отдельно (и может показываться в живом стриминге).
+func refusalVerdictSystemPrompt() string {
+	return refusalSystemPrompt(false)
+}
+
+// refusalSystemPrompt — общая инструкция; withDocument управляет секцией
+// готового документа и финальной схемой JSON.
+func refusalSystemPrompt(withDocument bool) string {
+	docSection := ""
+	jsonSchema := `{"type":"...","summary":"...","isLegal":"...","legalNotes":"...","violations":[{"article":"Стаття 18","reason":"..."}],"deadlineOk":"...","nextStep":"...","recommendation":"..."}`
+	if withDocument {
+		docSection = `
+6. ГОТОВИЙ ДОКУМЕНТ (draftSubject + draftBody) — повний текст документа для наступного кроку:
+   - clarification → офіційне уточнення/повторний запит: на що саме відповідь неповна, що саме просимо надати;
+   - complaint → скарга: факти, порушені статті, вимоги (надати інформацію, розглянути, дати письмову відповідь);
+   - appeal → звернення до вищого органу/уповноваженого;
+   - none → обидва поля порожні рядки "".
+   Документ пиши від першої особи («прошу», «звертаю увагу»), офіційним стилем, українською мовою, БЕЗ підпису і дати (бот додасть їх сам), БЕЗ email-адрес і без місць для заповнення на кшталт [ПІБ].
+`
+		jsonSchema = `{"type":"...","summary":"...","isLegal":"...","legalNotes":"...","violations":[{"article":"Стаття 18","reason":"..."}],"deadlineOk":"...","nextStep":"...","recommendation":"...","draftSubject":"...","draftBody":"..."}`
+	} else {
+		docSection = `
+6. Документ на цьому етапі НЕ потрібен: наступним окремим кроком документ підготує інший запит. Просто постав вердикт.
+`
+	}
 	return `Ти — досвідчений український юрист із законодавства про доступ до публічної інформації. Твоє завдання — розібрати відповідь державного органу (розпорядника інформації) на запит громадянина та оцінити її відповідність до Закону України «Про доступ до публічної інформації» № 2939-VI.
 
 ЩО ВИЗНАЧИТИ:
@@ -82,14 +110,7 @@ func refusalAnalysisSystemPrompt() string {
    - "complaint" — скарга на дії/бездіяльність розпорядника;
    - "appeal" — оскарження до вищого органу, Уповноваженого ВР України з прав людини або суду;
    - "none" — нічого не потрібно (відповідь по суті).
-
-6. ГОТОВИЙ ДОКУМЕНТ (draftSubject + draftBody) — повний текст документа для наступного кроку:
-   - clarification → офіційне уточнення/повторний запит: на що саме відповідь неповна, що саме просимо надати;
-   - complaint → скарга: факти, порушені статті, вимоги (надати інформацію, розглянути, дати письмову відповідь);
-   - appeal → звернення до вищого органу/уповноваженого;
-   - none → обидва поля порожні рядки "".
-   Документ пиши від першої особи («прошу», «звертаю увагу»), офіційним стилем, українською мовою, БЕЗ підпису і дати (бот додасть їх сам), БЕЗ email-адрес і без місць для заповнення на кшталт [ПІБ].
-
+` + docSection + `
 ПРАВИЛА:
 - Жодних вигаданих фактів: спирайся лише на наданий текст відповіді та контекст запиту.
 - Посилайся лише на ті статті, у яких впевнений.
@@ -97,7 +118,7 @@ func refusalAnalysisSystemPrompt() string {
 - summary і recommendation пиши простою мовою, зрозумілою неюристу.
 
 ОБОВ'ЯЗКОВО поверни ЛИШЕ валідний JSON (без markdown-огорож, без пояснень навколо):
-{"type":"...","summary":"...","isLegal":"...","legalNotes":"...","violations":[{"article":"Стаття 18","reason":"..."}],"deadlineOk":"...","nextStep":"...","recommendation":"...","draftSubject":"...","draftBody":"..."}`
+` + jsonSchema
 }
 
 // BuildRefusalAnalysisPrompt — пользовательская часть запроса к модели.
@@ -116,9 +137,32 @@ func BuildRefusalAnalysisPrompt(organ, subject, replyText string) string {
 	return b.String()
 }
 
-// AnalyzeRefusal выполняет AI-розбір ответа органа. photoBase64 — опциональное
-// фото письма (мультимодальный запрос).
+// AnalyzeRefusal выполняет AI-розбір ответа органа в два этапа: быстрый
+// вердикт + готовый документ. Фото письма — опционально (мультимодальный
+// запрос; фото учитывается только на этапе вердикта).
+// Используется мини-приложением (POST /api/analyze); бот-хендлер работает
+// с этапами по отдельности (AnalyzeRefusalVerdict + AnalyzeRefusalDocument),
+// чтобы показать вердикт сразу и стримить документ.
 func (r *Rotator) AnalyzeRefusal(organ, subject, replyText string, photoBase64 []byte) (*RefusalAnalysis, error) {
+	a, err := r.AnalyzeRefusalVerdict(organ, subject, replyText, photoBase64)
+	if err != nil {
+		return nil, err
+	}
+	if a.NextStep == "none" || a.NextStep == "" {
+		return a, nil
+	}
+	subj, body, derr := r.AnalyzeRefusalDocument(a, organ, subject, replyText, nil)
+	if derr != nil {
+		// Документ не удался — вердикт ценен сам по себе; не валится весь разбор.
+		return a, nil
+	}
+	a.DraftSubject, a.DraftBody = subj, body
+	return a, nil
+}
+
+// AnalyzeRefusalVerdict — БЫСТРЫЙ этап: вердикт без документа
+// (тип, законность, нарушения, строки, следующий шаг, рекомендация).
+func (r *Rotator) AnalyzeRefusalVerdict(organ, subject, replyText string, photoBase64 []byte) (*RefusalAnalysis, error) {
 	if len(replyText) > analysisMaxReplyLen {
 		replyText = replyText[:analysisMaxReplyLen]
 	}
@@ -144,11 +188,120 @@ func (r *Rotator) AnalyzeRefusal(organ, subject, replyText string, photoBase64 [
 		},
 	}
 
-	text, err := r.tryProxyThenDirect(refusalAnalysisSystemPrompt(), contents, "application/json", media)
+	text, err := r.tryProxyThenDirect(refusalVerdictSystemPrompt(), contents, "application/json", media)
 	if err != nil {
 		return nil, err
 	}
 	return ParseRefusalAnalysis(text)
+}
+
+// refusalDocumentSystemPrompt — инструкция этапа документа: модель знает
+// вердикт и пишет только готовый документ. Формат — простой текст
+// (первый ряд — тема), чтобы документ можно было показывать в стриминге
+// без JSON-шума.
+func refusalDocumentSystemPrompt(a *RefusalAnalysis) string {
+	violations := "не визначені"
+	if len(a.Violations) > 0 {
+		var sb strings.Builder
+		for i, v := range a.Violations {
+			if i > 0 {
+				sb.WriteString("; ")
+			}
+			sb.WriteString(v.Article)
+			if v.Reason != "" {
+				sb.WriteString(" — " + v.Reason)
+			}
+		}
+		violations = sb.String()
+	}
+	return `Ти — досвідчений український юрист із законодавства про доступ до публічної інформації. Вердикт щодо відповіді органу вже поставлено (нижче). Твоє завдання — скласти ГОТОВИЙ ДОКУМЕНТ для наступного кроку громадянина.
+
+ВЕРДИКТ (вже поставлено, не переглядай його):
+- тип відповіді органу: ` + a.Type + `
+- оцінка законності: ` + a.IsLegal + `
+- порушені статті: ` + violations + `
+- наступний крок: ` + a.NextStep + `
+
+ФОРМАТ ВІДПОВІДІ — простий текст, без JSON і markdown-огорож:
+перший рядок — тема документа;
+порожній рядок;
+далі — повний текст документа.
+
+ВИМОГИ ДО ДОКУМЕНТА:
+- ` + documentGoal(a.NextStep) + `
+- Пиши від першої особи («прошу», «звертаю увагу»), офіційним стилем, українською мовою.
+- БЕЗ підпису і дати (бот додасть їх сам), БЕЗ email-адрес, без місць для заповнення на кшталт [ПІБ].
+- Жодних вигаданих фактів: спирайся лише на текст відповіді органу та контекст запиту.
+- Згадай порушені статті та вимоги, які випливають із вердикту.`
+}
+
+// documentGoal — что именно должно получиться на следующем шаге.
+func documentGoal(nextStep string) string {
+	switch nextStep {
+	case "clarification":
+		return "Офіційне уточнення/повторний запит: на що саме відповідь неповна або не за темою, що саме просимо надати, з посиланням на строки відповіді за ст. 17 ЗУ № 2939-VI."
+	case "complaint":
+		return "Скарга на дії/бездіяльність розпорядника: факти (запит, відповідь, строки), порушені статті, вимоги (надати інформацію, розглянути скаргу, дати письмову мотивовану відповідь)."
+	case "appeal":
+		return "Звернення до вищого органу/Уповноваженого Верховної Ради України з прав людини: суть порушення, що просимо зробити, посилання на закон."
+	default:
+		return "Коротке повторне звернення із проханням надати інформацію по суті запиту."
+	}
+}
+
+// AnalyzeRefusalDocument — МЕДЛЕННЫЙ этап: готовый документ для следующего
+// шага. onChunk (если задан) получает дельты текста по мере генерации —
+// так бот показывает документ «печатается прямо на глазах» (пилот
+// стриминга). Возвращает тему и текст документа.
+func (r *Rotator) AnalyzeRefusalDocument(a *RefusalAnalysis, organ, subject, replyText string, onChunk func(string)) (string, string, error) {
+	if a == nil || a.NextStep == "none" || a.NextStep == "" {
+		return "", "", nil
+	}
+	if len(replyText) > analysisMaxReplyLen {
+		replyText = replyText[:analysisMaxReplyLen]
+	}
+
+	contents := []interface{}{
+		map[string]interface{}{
+			"role": "user",
+			"parts": []interface{}{
+				map[string]string{"text": BuildRefusalAnalysisPrompt(organ, subject, replyText)},
+			},
+		},
+	}
+
+	text, err := r.tryProxyThenDirectStream(refusalDocumentSystemPrompt(a), contents, "", false, onChunk)
+	if err != nil {
+		return "", "", err
+	}
+	return ParseDocumentDraft(text)
+}
+
+// ParseDocumentDraft разбирает ответ этапа документа: первый ряд — тема,
+// остальное — текст. Чистая функция, покрыта тестами.
+func ParseDocumentDraft(raw string) (subject, body string, err error) {
+	raw = strings.TrimSpace(raw)
+	// Модель могла обернуть текст в markdown-заборы — снимаем.
+	if strings.HasPrefix(raw, "```") {
+		if idx := strings.Index(raw, "\n"); idx >= 0 {
+			raw = raw[idx+1:]
+		}
+		raw = strings.TrimSuffix(strings.TrimSpace(raw), "```")
+		raw = strings.TrimSpace(raw)
+	}
+	if raw == "" {
+		return "", "", nil
+	}
+	if idx := strings.Index(raw, "\n"); idx >= 0 {
+		subject = strings.TrimSpace(raw[:idx])
+		body = strings.TrimSpace(raw[idx+1:])
+	} else {
+		subject = raw
+	}
+	if subject == "" {
+		subject = "Документ"
+	}
+	return subject, body, nil
 }
 
 // ParseRefusalAnalysis парсит и нормализует ответ модели (чистая функция для тестов).

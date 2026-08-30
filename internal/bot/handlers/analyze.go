@@ -322,9 +322,12 @@ func (m *AnalyzeModule) runAnalysis(c tb.Context, sess *session.SessionData, pho
 	// возвращаем его пользователю (честная оплата только за результат).
 	spentCredit := m.deps.Cfg.StarsEnabled && m.deps.Stars != nil
 
-	_ = c.Send("⏳ Аналізую відповідь… (10–30 секунд)")
+	// Разбор идёт в два этапа: сперва БЫСТРЫЙ вердикт (пользователь видит
+	// оценку за секунды), затем — готовый документ, который печатается
+	// в прямом эфире (пилот стриминга).
+	_ = c.Send("⏳ Аналізую відповідь… (спершу — швидкий вердикт)")
 
-	analysis, err := m.deps.Gemini.AnalyzeRefusal(d.Organ, d.Subject, d.ReplyText, photo)
+	analysis, err := m.deps.Gemini.AnalyzeRefusalVerdict(d.Organ, d.Subject, d.ReplyText, photo)
 	if err != nil {
 		if spentCredit {
 			_ = m.deps.Stars.Add(c.Sender().ID, 1)
@@ -335,8 +338,6 @@ func (m *AnalyzeModule) runAnalysis(c tb.Context, sess *session.SessionData, pho
 	}
 
 	d.NextStep = analysis.NextStep
-	d.DraftSubject = analysis.DraftSubject
-	d.DraftBody = analysis.DraftBody
 	sess.Step = "idle"
 	saveSession(m.deps, c)
 
@@ -345,36 +346,116 @@ func (m *AnalyzeModule) runAnalysis(c tb.Context, sess *session.SessionData, pho
 	}
 	log.Printf("[ANALYZE] user=%d type=%s legal=%s next=%s", c.Sender().ID, analysis.Type, analysis.IsLegal, analysis.NextStep)
 
-	// 1) Карточка вердикта.
+	// 1) Карточка вердикта — сразу, не ждём документа.
 	if err := sendLongHTML(c, buildVerdictCard(d.Organ, d.Subject, analysis)); err != nil {
 		log.Printf("[ANALYZE] verdict send: %v", err)
 	}
-	// 2) Готовый документ (если модель его подготовила).
-	if analysis.NextStep != "none" && strings.TrimSpace(analysis.DraftBody) != "" {
-		return m.sendDraft(c, d)
+	// 2) Готовый документ — печатается по мере генерации (стриминг).
+	if analysis.NextStep != "none" {
+		return m.streamDraft(c, sess, d, analysis)
 	}
 	return nil
 }
 
+// streamDraft — готовит документ с живым отображением: бот присылает
+// сообщение-заглушку и дополняет его по мере генерации (пилот стриминга).
+// Финальная правка превращает сообщение в готовый документ с кнопками.
+func (m *AnalyzeModule) streamDraft(c tb.Context, sess *session.SessionData, d *session.AnalyzeDraft, a *ai.RefusalAnalysis) error {
+	// Если заглушку отправить не удалось — тихо уходим в блокирующий режим.
+	holder, herr := c.Bot().Send(c.Recipient(), "⏳ <b>Готую документ…</b>\n\n<i>Текст з'являтиметься поступово.</i>", tb.ModeHTML)
+	if herr != nil {
+		log.Printf("[ANALYZE] stream holder send failed: %v", herr)
+		subject, body, derr := m.deps.Gemini.AnalyzeRefusalDocument(a, d.Organ, d.Subject, d.ReplyText, nil)
+		if derr != nil {
+			log.Printf("[ANALYZE] document error user=%d: %v", c.Sender().ID, derr)
+			return nil // вердикт уже доставлен
+		}
+		d.DraftSubject, d.DraftBody = subject, body
+		saveSession(m.deps, c)
+		return m.sendDraft(c, d)
+	}
+
+	var buf strings.Builder
+	lastEdit := time.Now()
+
+	subject, body, derr := m.deps.Gemini.AnalyzeRefusalDocument(a, d.Organ, d.Subject, d.ReplyText, func(delta string) {
+		buf.WriteString(delta)
+		// Telegram не любит частые правки одного сообщения: обновляем
+		// не чаще раза в ~1.5 секунды, а финальный вид всё равно покажем
+		// отдельной правкой после завершения генерации.
+		if time.Since(lastEdit) >= 1500*time.Millisecond {
+			lastEdit = time.Now()
+			_, _ = c.Bot().Edit(holder, buildStreamingDocHTML(buf.String()), tb.ModeHTML)
+		}
+	})
+	if derr != nil {
+		log.Printf("[ANALYZE] document error user=%d: %v", c.Sender().ID, derr)
+		_, _ = c.Bot().Edit(holder, "⚠️ Не вдалося підготувати документ (помилка моделі). Вердикт — вище. Спробуйте розбір ще раз за хвилину.", tb.ModeHTML)
+		return nil
+	}
+	if strings.TrimSpace(body) == "" && strings.TrimSpace(subject) == "" {
+		_, _ = c.Bot().Edit(holder, "ℹ️ Документ для цього випадку не потрібен — дивіться вердикт вище.", tb.ModeHTML)
+		return nil
+	}
+
+	d.DraftSubject, d.DraftBody = subject, body
+	saveSession(m.deps, c)
+
+	// Финальный вид документа: если влезает в одно сообщение — правим
+	// заглушку; иначе показываем документ отдельным сообщением.
+	finalText := buildDraftHTML(d)
+	if utf8.RuneCountInString(finalText) <= 4000 {
+		kb := draftKeyboard(d, m.deps.Dostup != nil)
+		if _, eerr := c.Bot().Edit(holder, finalText, tb.ModeHTML, kb); eerr != nil {
+			log.Printf("[ANALYZE] final edit: %v", eerr)
+			return m.sendDraft(c, d)
+		}
+		return nil
+	}
+	_, _ = c.Bot().Edit(holder, "✅ Документ готовий — нижче.", tb.ModeHTML)
+	return m.sendDraft(c, d)
+}
+
+// buildStreamingDocHTML — промежуточный показ растущего документа
+// (первые ~3400 знаков, чтобы гарантированно влезть в лимит сообщения).
+func buildStreamingDocHTML(partial string) string {
+	header := "⏳ <b>Готую документ…</b>\n\n"
+	r := []rune(partial)
+	tail := ""
+	if len(r) > 3400 {
+		r = r[:3400]
+		tail = "\n\n…"
+	}
+	return header + htmlEscape(string(r)) + tail
+}
+
 // sendDraft — готовый документ с кнопками действий.
 func (m *AnalyzeModule) sendDraft(c tb.Context, d *AnalyzeDraft) error {
+	return sendLongHTMLWithKeyboard(c, buildDraftHTML(d), draftKeyboard(d, m.deps.Dostup != nil))
+}
+
+// buildDraftHTML — финальный вид готового документа (HTML).
+func buildDraftHTML(d *AnalyzeDraft) string {
 	header := fmt.Sprintf("✉️ <b>ГОТОВИЙ ДОКУМЕНТ: %s</b>\n\n", nextStepLabel(d.NextStep))
 	body := ""
 	if strings.TrimSpace(d.DraftSubject) != "" {
 		body += "<b>Тема:</b> " + htmlEscape(d.DraftSubject) + "\n\n"
 	}
 	body += htmlEscape(d.DraftBody)
+	return header + body
+}
 
+// draftKeyboard — кнопки действий под готовым документом.
+func draftKeyboard(d *AnalyzeDraft, dostupEnabled bool) *tb.ReplyMarkup {
 	kb := &tb.ReplyMarkup{}
 	var rows [][]tb.InlineButton
-	if d.RequestSlug != "" && m.deps.Dostup != nil {
+	if d.RequestSlug != "" && dostupEnabled {
 		rows = append(rows, []tb.InlineButton{{Unique: "an_thread", Text: "✉️ Надіслати у гілку запиту"}})
 	}
 	rows = append(rows, []tb.InlineButton{{Unique: "an_copy", Text: "📋 Окремим повідомленням (щоб скопіювати)"}})
 	rows = append(rows, []tb.InlineButton{{Unique: "an_cancel", Text: "❌ Закрити"}})
 	kb.InlineKeyboard = rows
-
-	return sendLongHTMLWithKeyboard(c, header+body, kb)
+	return kb
 }
 
 // handleSendToThread — отправка готового документа в ту же гилку запроса.

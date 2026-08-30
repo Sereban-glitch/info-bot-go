@@ -112,7 +112,7 @@ func Load() (*Config, error) {
 		GmailUser:        os.Getenv("GMAIL_USER"),
 		GmailAppPassword: os.Getenv("GMAIL_APP_PASSWORD"),
 
-		GeminiModel:         getEnvOrDefault("GEMINI_MODEL", "gemini-1.5-flash"),
+		GeminiModel:         getEnvOrDefault("GEMINI_MODEL", "gemini-3-flash-preview"),
 		IMAPPollMinutes:     getEnvInt("IMAP_POLL_MINUTES", 60),
 		AdminID:             getEnvInt64("ADMIN_ID", 745130167),
 		ChannelID:           getEnvOrDefault("CHANNEL_ID", "@svobodnye_ludi_zp"),

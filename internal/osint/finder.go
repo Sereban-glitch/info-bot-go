@@ -17,6 +17,7 @@ import (
 var ErrOSINTCooldown = errors.New("all API keys in cooldown, try again later")
 
 var cascadeModels = []string{
+	"gemini-3-flash-preview",
 	"gemini-2.5-flash",
 	"gemini-2.5-flash-lite",
 }

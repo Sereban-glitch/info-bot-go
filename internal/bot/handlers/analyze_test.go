@@ -146,3 +146,62 @@ func TestSplitHTMLMessage(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildStreamingDocHTML — промежуточный показ растущего документа:
+// заголовок с песочными часами, HTML-экранирование, обрезка длинного
+// текста с многоточием (пилот стриминга).
+func TestBuildStreamingDocHTML(t *testing.T) {
+	short := buildStreamingDocHTML("Прошу надати інформацію")
+	if !strings.Contains(short, "⏳") {
+		t.Errorf("промежуточный показ должен иметь заголовок с ⏳: %q", short)
+	}
+	if !strings.Contains(short, "Прошу надати інформацію") {
+		t.Errorf("текст документа должен входить в показ: %q", short)
+	}
+
+	// HTML-экранирование: пользовательский текст не должен ломать разметку.
+	esc := buildStreamingDocHTML("<b>тег</b> & текст")
+	if strings.Contains(esc, "<b>тег</b>") {
+		t.Errorf("HTML в тексте документа должен экранироваться: %q", esc)
+	}
+
+	// Длинный текст обрезается с многоточием, но не превышает лимит сообщения.
+	long := strings.Repeat("а", 5000)
+	cut := buildStreamingDocHTML(long)
+	if len([]rune(cut)) > 3900 {
+		t.Errorf("обрезанный показ должен влезать в лимит Telegram, длина: %d", len([]rune(cut)))
+	}
+	if !strings.HasSuffix(strings.TrimSpace(cut), "…") {
+		t.Errorf("обрезанный показ должен заканчиваться многоточием: %q", cut[len(cut)-20:])
+	}
+}
+
+// TestBuildDraftHTMLAndKeyboard — финальный вид документа и кнопки:
+// тема выделена, тело экранировано, кнопки действий на месте.
+func TestBuildDraftHTMLAndKeyboard(t *testing.T) {
+	d := &AnalyzeDraft{
+		NextStep:     "complaint",
+		DraftSubject: "Скарга <на> відмову",
+		DraftBody:    "Прошу надати інформацію & розглянути скаргу.",
+		RequestSlug:  "slug-1",
+	}
+	html := buildDraftHTML(d)
+	if !strings.Contains(html, "ГОТОВИЙ ДОКУМЕНТ") {
+		t.Errorf("финальный показ должен иметь заголовок: %q", html[:80])
+	}
+	if !strings.Contains(html, "Скарга &lt;на&gt; відмову") {
+		t.Errorf("тема должна экранироваться: %q", html)
+	}
+	if !strings.Contains(html, "розглянути скаргу.") {
+		t.Errorf("тело документа должно входить: %q", html)
+	}
+
+	kb := draftKeyboard(d, true)
+	if len(kb.InlineKeyboard) != 3 {
+		t.Errorf("с гилкой портала должно быть 3 ряда кнопок, получено %d", len(kb.InlineKeyboard))
+	}
+	kbNoThread := draftKeyboard(&AnalyzeDraft{DraftBody: "x"}, false)
+	if len(kbNoThread.InlineKeyboard) != 2 {
+		t.Errorf("без гилки должно быть 2 ряда кнопок, получено %d", len(kbNoThread.InlineKeyboard))
+	}
+}

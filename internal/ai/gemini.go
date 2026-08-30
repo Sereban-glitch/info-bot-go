@@ -28,6 +28,7 @@ type Rotator struct {
 	client        *http.Client
 	proxy         *ProxyConfig // опциональный AI-прокси
 	proxyState    *proxyState  // состояние прокси (пауза при сбоях)
+	geminiBase    string       // базовый URL прямого Gemini (переопределяется в тестах)
 }
 
 type keyState struct {
@@ -48,6 +49,7 @@ func NewRotator(keys []string, model string, fallbackModel string) *Rotator {
 		model:         model,
 		fallbackModel: fallbackModel,
 		client:        &http.Client{Timeout: 60 * time.Second},
+		geminiBase:    "https://generativelanguage.googleapis.com/v1beta",
 	}
 }
 
@@ -128,7 +130,7 @@ func (r *Rotator) geminiRequest(systemPrompt string, contents []interface{}, res
 		return "", err
 	}
 
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", r.model, key)
+	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s", r.geminiBaseURL(), r.model, key)
 
 	payload := map[string]interface{}{
 		"contents": contents,
@@ -227,7 +229,7 @@ func (r *Rotator) geminiRequestWithModel(systemPrompt string, contents []interfa
 		return "", err
 	}
 
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, key)
+	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s", r.geminiBaseURL(), model, key)
 
 	payload := map[string]interface{}{
 		"contents": contents,

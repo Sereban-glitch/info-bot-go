@@ -37,11 +37,13 @@ type ProxyConfig struct {
 	MediaModel    string // модель для мультимедиа (голос, фото)
 }
 
-// proxyState — состояние прокси (счётчик сбоев, пауза).
+// proxyState — состояние прокси (счётчик сбоев, пауза, липкий выбор
+// эндпоинта: messages | openai).
 type proxyState struct {
 	mu             sync.Mutex
 	consecFailures int
 	pausedUntil    time.Time
+	endpoint       string
 }
 
 // SetProxy включает прокси-маршрутизацию.
@@ -150,82 +152,11 @@ type proxyImageURL struct {
 	URL string `json:"url"`
 }
 
-// proxyChat выполняет запрос через прокси (OpenAI-совместимый формат).
-// systemPrompt — системная инструкция; contents — те же contents, что идут
-// в Gemini API (упаковываются в одно пользовательское сообщение с текстом
-// и inline-данными). media=true — использовать мультимедийную модель.
-// Возвращает текст ответа или ошибку.
-func (r *Rotator) proxyChat(systemPrompt string, contents []interface{}, media bool) (string, error) {
-	base := r.proxyBase()
-	if base == "" {
-		return "", fmt.Errorf("proxy: не настроен")
-	}
-
-	// Собираем пользовательское сообщение из contents (Gemini-структура).
-	// Части приходят в двух видах: map[string]string (текстовые методы —
-	// ImproveRequest, GenerateFromDescription, AnalyzeRefusal…) и
-	// map[string]interface{} (мультимедийные — VoiceToRequest и др.);
-	// раньше прокси понимал только второй вид и текстовые запросы
-	// молча падали в «пустой запрос», обходя прокси.
-	var parts []proxyPart
-	for _, cItf := range contents {
-		cm, ok := cItf.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		role, _ := cm["role"].(string)
-		if role == "" {
-			role = "user"
-		}
-		var inner []interface{}
-		switch p := cm["parts"].(type) {
-		case []interface{}:
-			inner = p
-		case []map[string]string:
-			// GenerateFromDescription/ImproveRequest передают parts так.
-			for _, m := range p {
-				inner = append(inner, m)
-			}
-		}
-		for _, pItf := range inner {
-			var txt string
-			var inline map[string]string
-			switch pm := pItf.(type) {
-			case map[string]string:
-				txt = pm["text"]
-			case map[string]interface{}:
-				if t, ok := pm["text"].(string); ok {
-					txt = t
-				}
-				if inl, ok := pm["inlineData"].(map[string]string); ok {
-					inline = inl
-				} else if inlAny, ok := pm["inlineData"].(map[string]interface{}); ok {
-					mime, _ := inlAny["mimeType"].(string)
-					data, _ := inlAny["data"].(string)
-					if mime != "" && data != "" {
-						inline = map[string]string{"mimeType": mime, "data": data}
-					}
-				}
-			default:
-				continue
-			}
-			if txt != "" {
-				parts = append(parts, proxyPart{Type: "text", Text: txt})
-				continue
-			}
-			if len(inline) > 0 {
-				mime := inline["mimeType"]
-				if mime == "" {
-					mime = "audio/ogg"
-				}
-				parts = append(parts, proxyPart{
-					Type:     "input_audio",
-					Text:     "", // данные передаём через image_url.data-URI (универсально)
-					ImageURL: &proxyImageURL{URL: "data:" + mime + ";base64," + inline["data"]},
-				})
-			}
-		}
-	}
+// proxyChatOpenAI выполняет запрос через прежний эндпоинт
+// /v1/chat/completions (OpenAI-совместимый формат). Основной путь —
+// /v1/messages (proxy_messages.go); сюда откатываемся, если прокси
+// старый и нового формата не знает.
+func (r *Rotator) proxyChatOpenAI(base, systemPrompt string, parts []proxyPart, media bool) (string, error) {
 	if len(parts) == 0 {
 		return "", fmt.Errorf("proxy: пустой запрос")
 	}
@@ -263,7 +194,7 @@ func (r *Rotator) proxyChat(systemPrompt string, contents []interface{}, media b
 
 	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 400))
-		return "", fmt.Errorf("proxy error %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		return "", &proxyHTTPError{Status: resp.StatusCode, Body: strings.TrimSpace(string(respBody))}
 	}
 
 	var parsed struct {
@@ -283,8 +214,14 @@ func (r *Rotator) proxyChat(systemPrompt string, contents []interface{}, media b
 }
 
 // tryProxyThenDirect — сначала прокси (если доступен), затем прямой Gemini.
+// Аудио (голосовые) идёт напрямую: формат /v1/messages официально
+// поддерживает только изображения, и провал аудио на прокси не должен
+// «паузить» прокси для текстовых запросов. Если прямой Gemini не справился
+// (например, лимит) — аудио всё же пробуем через прокси как последний шанс,
+// не засчитывая сбой.
 func (r *Rotator) tryProxyThenDirect(systemPrompt string, contents []interface{}, responseMIME string, media bool) (string, error) {
-	if r.proxyAvailable() {
+	audio := contentsHasAudio(contents)
+	if r.proxyAvailable() && !audio {
 		text, err := r.proxyChat(systemPrompt, contents, media)
 		if err == nil {
 			r.markProxySuccess()
@@ -293,5 +230,40 @@ func (r *Rotator) tryProxyThenDirect(systemPrompt string, contents []interface{}
 		r.markProxyFailure()
 		log.Printf("[AI] proxy failed (%v), falling back to direct Gemini", err)
 	}
-	return r.geminiRequest(systemPrompt, contents, responseMIME)
+	text, derr := r.geminiRequest(systemPrompt, contents, responseMIME)
+	if derr == nil {
+		return text, nil
+	}
+	if audio && r.proxyAvailable() {
+		if ptext, perr := r.proxyChat(systemPrompt, contents, media); perr == nil {
+			r.markProxySuccess()
+			return ptext, nil
+		}
+	}
+	return "", derr
+}
+
+// tryProxyThenDirectStream — как tryProxyThenDirect, но с живой отдачей
+// текста: дельты генерации передаются в onChunk по мере поступления
+// (пилот стриминга). Если ни прокси, ни прямой Gemini не смогли
+// стримить — прозрачно уходим в блокирующий вызов (без колбэка).
+func (r *Rotator) tryProxyThenDirectStream(systemPrompt string, contents []interface{}, responseMIME string, media bool, onChunk func(string)) (string, error) {
+	if onChunk == nil {
+		return r.tryProxyThenDirect(systemPrompt, contents, responseMIME, media)
+	}
+	if r.proxyAvailable() && !contentsHasAudio(contents) {
+		text, err := r.proxyChatStream(systemPrompt, contents, media, onChunk)
+		if err == nil {
+			r.markProxySuccess()
+			return text, nil
+		}
+		r.markProxyFailure()
+		log.Printf("[AI] proxy stream failed (%v), falling back to direct Gemini", err)
+	}
+	text, err := r.geminiRequestStream(systemPrompt, contents, responseMIME, onChunk)
+	if err == nil {
+		return text, nil
+	}
+	log.Printf("[AI] direct stream failed (%v), falling back to blocking call", err)
+	return r.tryProxyThenDirect(systemPrompt, contents, responseMIME, media)
 }
