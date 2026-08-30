@@ -117,8 +117,8 @@ func (s *Server) Start(addr string) error {
 		}))
 	}
 
-	log.Printf("[WEB] Starting HTTP server on %s (rate limits: public=%d/min, auth bucket=%d/min, generate=%d/min)",
-		addr, s.cfg.APIRateLimitPublic, s.cfg.APIRateLimitAuth, s.cfg.APIRateLimitGenerate)
+	log.Printf("[WEB] Starting HTTP server on %s (rate limits: public=%d/min, auth bucket=%d/min, generate=%d/min, analyze=%d/min; stars=%v)",
+		addr, s.cfg.APIRateLimitPublic, s.cfg.APIRateLimitAuth, s.cfg.APIRateLimitGenerate, s.cfg.APIRateLimitAnalyze, s.cfg.StarsEnabled)
 
 	handler := loggingMiddleware(mux)
 	srv := &http.Server{
