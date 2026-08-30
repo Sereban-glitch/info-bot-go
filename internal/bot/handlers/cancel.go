@@ -24,6 +24,8 @@ func (m *CancelModule) Register() {
 		sess.Step = "idle"
 		sess.Draft = session.Draft{}
 		sess.PRDraft = nil
+		sess.FollowUp = nil
+		sess.Analyze = nil
 		saveSession(m.deps, c)
 		return c.Send("❌ Дію скасовано.")
 	}))

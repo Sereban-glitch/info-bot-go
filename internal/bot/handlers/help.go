@@ -20,6 +20,7 @@ func (m *HelpModule) Register() {
 	handler := safeHandler("help", func(c tb.Context) error {
 		text := "Команди:\n" +
 			"/new — створити новий запит (через «Доступ до правди»)\n" +
+			"/analyze — ⚖️ розібрати відповідь органу (AI-юрист)\n" +
 			"/templates — готові шаблони типових тем\n" +
 			"/my — список ваших запитів з посиланнями\n" +
 			"/status — живі статуси запитів на порталі\n" +

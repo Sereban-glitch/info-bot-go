@@ -155,7 +155,7 @@ func (m *StatsModule) handleAdminStats(c tb.Context) error {
 	moduleText := ""
 	if len(gs.ModuleUsage) > 0 {
 		moduleText = "\n📈 *По модулях:*\n"
-		for _, name := range []string{"new_request", "dostup", "voice", "copilot", "templates", "hotlines"} {
+		for _, name := range []string{"new_request", "analyze", "dostup", "voice", "copilot", "templates", "hotlines"} {
 			if count, ok := gs.ModuleUsage[name]; ok && count > 0 {
 				moduleText += fmt.Sprintf("  • %s: %d\n", moduleLabel(name), count)
 			}
@@ -189,6 +189,7 @@ func (m *StatsModule) handleAdminStats(c tb.Context) error {
 func moduleLabel(name string) string {
 	labels := map[string]string{
 		"new_request": "Нові запити",
+		"analyze":     "Розбір відповідей (AI)",
 		"dostup":      "Доступ до правди",
 		"voice":       "Голосові",
 		"copilot":     "Copilot",
@@ -210,6 +211,7 @@ func MainMenuKeyboard(cfg *config.Config, userID int64) *tb.ReplyMarkup {
 
 	rows := []tb.Row{
 		kb.Row(kb.Text("📝 Новий запит"), kb.Text("📚 Шаблони")),
+		kb.Row(kb.Text("🔍 Розбір відповіді")),
 		kb.Row(kb.Text("📨 Мої запити"), kb.Text("📊 Статистика")),
 		kb.Row(kb.WebApp("🚪 Прозоро", &tb.WebApp{URL: cfg.MiniAppURL})),
 		kb.Row(kb.Text("📞 Гарячі лінії"), kb.Text("👤 Мій профіль"), kb.Text("ℹ️ Довідка")),

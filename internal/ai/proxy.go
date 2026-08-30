@@ -162,6 +162,11 @@ func (r *Rotator) proxyChat(systemPrompt string, contents []interface{}, media b
 	}
 
 	// Собираем пользовательское сообщение из contents (Gemini-структура).
+	// Части приходят в двух видах: map[string]string (текстовые методы —
+	// ImproveRequest, GenerateFromDescription, AnalyzeRefusal…) и
+	// map[string]interface{} (мультимедийные — VoiceToRequest и др.);
+	// раньше прокси понимал только второй вид и текстовые запросы
+	// молча падали в «пустой запрос», обходя прокси.
 	var parts []proxyPart
 	for _, cItf := range contents {
 		cm, ok := cItf.(map[string]interface{})
@@ -172,15 +177,43 @@ func (r *Rotator) proxyChat(systemPrompt string, contents []interface{}, media b
 		if role == "" {
 			role = "user"
 		}
-		inner, _ := cm["parts"].([]interface{})
+		var inner []interface{}
+		switch p := cm["parts"].(type) {
+		case []interface{}:
+			inner = p
+		case []map[string]string:
+			// GenerateFromDescription/ImproveRequest передают parts так.
+			for _, m := range p {
+				inner = append(inner, m)
+			}
+		}
 		for _, pItf := range inner {
-			pm, ok := pItf.(map[string]interface{})
-			if !ok {
+			var txt string
+			var inline map[string]string
+			switch pm := pItf.(type) {
+			case map[string]string:
+				txt = pm["text"]
+			case map[string]interface{}:
+				if t, ok := pm["text"].(string); ok {
+					txt = t
+				}
+				if inl, ok := pm["inlineData"].(map[string]string); ok {
+					inline = inl
+				} else if inlAny, ok := pm["inlineData"].(map[string]interface{}); ok {
+					mime, _ := inlAny["mimeType"].(string)
+					data, _ := inlAny["data"].(string)
+					if mime != "" && data != "" {
+						inline = map[string]string{"mimeType": mime, "data": data}
+					}
+				}
+			default:
 				continue
 			}
-			if txt, ok := pm["text"].(string); ok && txt != "" {
+			if txt != "" {
 				parts = append(parts, proxyPart{Type: "text", Text: txt})
-			} else if inline, ok := pm["inlineData"].(map[string]string); ok {
+				continue
+			}
+			if len(inline) > 0 {
 				mime := inline["mimeType"]
 				if mime == "" {
 					mime = "audio/ogg"

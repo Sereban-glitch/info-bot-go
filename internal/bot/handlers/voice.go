@@ -24,6 +24,7 @@ type VoiceModule struct {
 	bot       *tb.Bot
 	bugReport *BugReportModule
 	followUp  *FollowUpModule
+	analyze   *AnalyzeModule // голосовой розбор ответа органа (ТЗ №6)
 }
 
 func NewVoiceModule(deps *Deps) *VoiceModule {
@@ -39,6 +40,12 @@ func (m *VoiceModule) SetBugReportModule(br *BugReportModule) {
 // (голосовые уточнения в гилки запросов).
 func (m *VoiceModule) SetFollowUpModule(fu *FollowUpModule) {
 	m.followUp = fu
+}
+
+// SetAnalyzeModule stores a reference to the AnalyzeModule for voice delegation
+// (можно продиктовать ответ органа для AI-розбора, ТЗ №6).
+func (m *VoiceModule) SetAnalyzeModule(a *AnalyzeModule) {
+	m.analyze = a
 }
 
 func (m *VoiceModule) Name() string       { return "voice" }
@@ -113,6 +120,13 @@ func (m *VoiceModule) handleVoice(c tb.Context) error {
 	// Голосовое уточнение в гилку запроса (followup)
 	if strings.HasPrefix(sess.Step, "followup:") && m.followUp != nil {
 		if handled, err := m.followUp.HandleVoice(c); handled {
+			return err
+		}
+	}
+
+	// ТЗ №6: ответ органа голосом — расшифровка и AI-розбор
+	if strings.HasPrefix(sess.Step, "analyze:") && m.analyze != nil {
+		if handled, err := m.analyze.HandleVoice(c); handled {
 			return err
 		}
 	}

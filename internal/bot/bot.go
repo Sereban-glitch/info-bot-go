@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"info-bot-go/internal/ai"
 	"info-bot-go/internal/bot/handlers"
@@ -155,6 +156,16 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 		}
 	}
 
+	// ТЗ №6: модуль розбора — пересланный в покое длинный текст
+	// (вероятный ответ органа) уводим на AI-разбор вместо поиска органа.
+	var analyzeMod *handlers.AnalyzeModule
+	for _, m := range modules {
+		if am, ok := m.(*handlers.AnalyzeModule); ok {
+			analyzeMod = am
+			break
+		}
+	}
+
 	// Подключаем модуль уточнений к sync-воркеру (напоминания о просрочках)
 	if deps.DostupSync != nil {
 		for _, m := range modules {
@@ -176,7 +187,7 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 		if strings.HasPrefix(text, "/") {
 			return nil
 		}
-		return dispatchText(deps, c, searchMod, modules)
+		return dispatchText(deps, c, searchMod, analyzeMod, modules)
 	})
 
 	return botInst, nil
@@ -270,7 +281,7 @@ func safeRegister(m handlers.Module) (err error) {
 // dispatchText routes text input to step handlers or idle search.
 // modules — зарегистрированные экземпляры модулей (те же, что в New());
 // переиспользуем их, чтобы состояние из Register() было доступно.
-func dispatchText(deps *handlers.Deps, c tb.Context, searchMod *handlers.SearchModule, modules []handlers.Module) error {
+func dispatchText(deps *handlers.Deps, c tb.Context, searchMod *handlers.SearchModule, analyzeMod *handlers.AnalyzeModule, modules []handlers.Module) error {
 	sess := c.Get("session")
 	if sess == nil {
 		return nil
@@ -300,10 +311,28 @@ func dispatchText(deps *handlers.Deps, c tb.Context, searchMod *handlers.SearchM
 		return nil
 	}
 
+	// ТЗ №6 «Розбір відмови»: пересланный длинный текст в покое —
+	// вероятнее всего, ответ органа. Поиск органа по такому тексту всё равно
+	// бесполезен, зато AI-разбор — то, что нужно (короткие пересылки
+	// по-прежнему ищут орган).
+	text := strings.TrimSpace(c.Text())
+	if analyzeMod != nil && isForwardedLongText(c, text) {
+		return analyzeMod.OfferForward(c, text)
+	}
+
 	// User is in idle state — try directory search
 	if searchMod != nil && len(strings.TrimSpace(c.Text())) >= 3 {
 		return searchMod.HandleSearch(c, strings.TrimSpace(c.Text()))
 	}
 
 	return nil
+}
+
+// isForwardedLongText — пересланное сообщение с достаточно длинным текстом:
+// реальные ответы органов длинные, а пересланные названия органов — короткие.
+func isForwardedLongText(c tb.Context, text string) bool {
+	if msg := c.Message(); msg == nil || !msg.IsForwarded() {
+		return false
+	}
+	return utf8.RuneCountInString(text) >= 60
 }

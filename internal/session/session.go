@@ -60,6 +60,21 @@ type FollowUpDraft struct {
 	PickIdx     int    `json:"pickIdx,omitempty"`     // выбранный индекс в списке гилок
 }
 
+// AnalyzeDraft — черновик AI-розбора ответа органа (ТЗ №6 «Розбір відмови»).
+// Хранит контекст (орган, тема, гилка портала) и ГОТОВЫЙ документ,
+// сгенерированный моделью, — чтобы кнопка «Надіслати у гілку запиту»
+// работала и после перезапуска бота.
+type AnalyzeDraft struct {
+	Organ        string `json:"organ,omitempty"`        // орган-распорядитель
+	Subject      string `json:"subject,omitempty"`      // тема исходного запроса
+	RequestSlug  string `json:"requestSlug,omitempty"`  // гилка на портале (если ответ оттуда)
+	URL          string `json:"url,omitempty"`          // публичная ссылка на гилку
+	ReplyText    string `json:"replyText,omitempty"`    // текст ответа органа
+	NextStep     string `json:"nextStep,omitempty"`     // clarification|complaint|appeal|none
+	DraftSubject string `json:"draftSubject,omitempty"` // тема готового документа
+	DraftBody    string `json:"draftBody,omitempty"`    // текст готового документа
+}
+
 // SessionData is the per-user session.
 type SessionData struct {
 	Step     string         `json:"step"`
@@ -68,6 +83,7 @@ type SessionData struct {
 	PRDraft  *PRDraft       `json:"prDraft,omitempty"`
 	History  []HistoryEntry `json:"history,omitempty"`
 	FollowUp *FollowUpDraft `json:"followUp,omitempty"` // черновик уточнения в гилку
+	Analyze  *AnalyzeDraft  `json:"analyze,omitempty"`  // черновик AI-розбора ответа (ТЗ №6)
 
 	// DostupDisclosureShown — владелец один раз увидел дисклеймер
 	// о публичности портала «Доступ до правди» (что публикуется открыто,
@@ -84,6 +100,7 @@ func NewSessionData() *SessionData {
 		PRDraft:  nil,
 		History:  nil,
 		FollowUp: nil,
+		Analyze:  nil,
 	}
 }
 

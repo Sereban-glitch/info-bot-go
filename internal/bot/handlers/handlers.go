@@ -47,6 +47,7 @@ type (
 	HistoryEntry   = session.HistoryEntry
 	FollowUpDraft  = session.FollowUpDraft
 	FollowUpThread = session.FollowUpThread
+	AnalyzeDraft   = session.AnalyzeDraft
 )
 
 type Module interface {
@@ -82,9 +83,12 @@ func AllModules(deps *Deps) []Module {
 	followUpMod := NewFollowUpModule(deps)
 	ratingMod := NewRatingModule(deps)
 	privacyMod := NewPrivacyModule(deps)
+	analyzeMod := NewAnalyzeModule(deps)
 
 	voiceMod.SetBugReportModule(bugReportMod)
 	voiceMod.SetFollowUpModule(followUpMod)
+	voiceMod.SetAnalyzeModule(analyzeMod)
+	bugReportMod.SetAnalyzeModule(analyzeMod)
 
 	return []Module{
 		startMod,
@@ -109,6 +113,7 @@ func AllModules(deps *Deps) []Module {
 		followUpMod,
 		ratingMod,
 		privacyMod,
+		analyzeMod,
 	}
 }
 

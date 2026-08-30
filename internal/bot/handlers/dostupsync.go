@@ -375,6 +375,8 @@ func (w *DostupSync) syncStatuses(report *strings.Builder) (repliedCount, ackCou
 }
 
 // notifyResponse отправляет пользователю уведомление об ответе ПО СУЩЕСТВУ.
+// ТЗ №6: вместе с уведомлением — кнопка AI-розбора (органы иногда
+// «отвечают» отписками даже со статусом «успешно»).
 func (w *DostupSync) notifyResponse(e sentlog.SentEntry, st *dostup.RequestStatus) {
 	organ := e.DostupBody
 	if organ == "" {
@@ -398,7 +400,7 @@ func (w *DostupSync) notifyResponse(e sentlog.SentEntry, st *dostup.RequestStatu
 		w.deps.FollowUps.MarkReplied(e.UserID, strings.TrimPrefix(e.MessageID, "dostup:"), time.Now().Format(time.RFC3339))
 	}
 
-	w.sendNotify(e.UserID, text)
+	w.sendNotifyWithAnalyze(e.UserID, text, strings.TrimPrefix(e.MessageID, "dostup:"))
 }
 
 // notifyAcknowledgement сообщает о промежуточном авто-подтверждении:
@@ -459,7 +461,8 @@ func (w *DostupSync) notifyStatusChange(e sentlog.SentEntry, st *dostup.RequestS
 		"🔗 Повна переписка (без реєстрації):\n%s",
 		htmlEscape(organ), htmlEscape(e.Subject), dostup.StatusLabel(st.Status), htmlLink(e.URL))
 
-	w.sendNotify(e.UserID, text)
+	// ТЗ №6: отказ/уточнение/ошибка — прямая дорога к AI-разбору.
+	w.sendNotifyWithAnalyze(e.UserID, text, strings.TrimPrefix(e.MessageID, "dostup:"))
 }
 
 // sendNotify доставляет сообщение в чат пользователя (HTML-режим).
@@ -472,6 +475,32 @@ func (w *DostupSync) sendNotify(userID int64, text string) {
 		return
 	}
 	_, err := w.bot.Send(tb.ChatID(target), text, tb.ModeHTML, tb.NoPreview)
+	if err != nil {
+		log.Printf("[DOSTUP-SYNC] уведомление user=%d: %v", target, err)
+	}
+}
+
+// sendNotifyWithAnalyze — уведомление с кнопкой «⚖️ Розібрати відповідь (AI)»
+// (ТЗ №6): data = slug запроса, обработчик подтягивает контекст из гилки.
+func (w *DostupSync) sendNotifyWithAnalyze(userID int64, text, slug string) {
+	target := userID
+	if target == 0 {
+		target = w.deps.Cfg.AdminID
+	}
+	if target == 0 {
+		return
+	}
+	if slug == "" || len(slug) > 60 {
+		// Telegram ограничивает callback_data 64 байтами: длинный слаг
+		// заблокировал бы отправку всего уведомления — шлём без кнопки.
+		w.sendNotify(target, text)
+		return
+	}
+	kb := &tb.ReplyMarkup{}
+	kb.InlineKeyboard = [][]tb.InlineButton{
+		{{Unique: "an_btn", Text: "⚖️ Розібрати відповідь (AI)", Data: slug}},
+	}
+	_, err := w.bot.Send(tb.ChatID(target), text, kb, tb.ModeHTML, tb.NoPreview)
 	if err != nil {
 		log.Printf("[DOSTUP-SYNC] уведомление user=%d: %v", target, err)
 	}

@@ -708,6 +708,36 @@ func (c *Client) GetRequestStatus(slug string) (*RequestStatus, error) {
 	return st, nil
 }
 
+// GetRequestResponseText возвращает текст последнего входящего сообщения
+// органа на публичной странице запроса — до maxLen символов (0 = без
+// ограничения). В отличие от GetRequestStatus, не обрезает на 400 символах:
+// полный текст нужен для AI-розбора ответа (ТЗ №6). Вызывается только
+// по действию пользователя, не в фоновых циклах.
+func (c *Client) GetRequestResponseText(slug string, maxLen int) (string, error) {
+	page, code, err := c.getFollow("/request/" + slug)
+	if err != nil {
+		return "", err
+	}
+	if code != 200 {
+		return "", fmt.Errorf("dostup: страница запроса: HTTP %d", code)
+	}
+	incoming := reIncoming.FindAllStringSubmatchIndex(page, -1)
+	if len(incoming) == 0 {
+		return "", nil
+	}
+	last := incoming[len(incoming)-1]
+	tail := page[last[0]:]
+	if m := reCorrText.FindStringSubmatch(tail); m != nil {
+		text := htmlUnescape(reTag.ReplaceAllString(m[1], " "))
+		text = strings.Join(strings.Fields(text), " ")
+		if maxLen > 0 && len(text) > maxLen {
+			text = text[:maxLen] + "…"
+		}
+		return text, nil
+	}
+	return "", nil
+}
+
 // htmlUnescape заменяет базовые HTML-сущности.
 func htmlUnescape(s string) string {
 	replacer := strings.NewReplacer(

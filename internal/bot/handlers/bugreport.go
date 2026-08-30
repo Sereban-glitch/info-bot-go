@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	tb "gopkg.in/telebot.v3"
 
@@ -11,12 +12,19 @@ import (
 
 // BugReportModule handles bug/error reports from users, forwarding them to the admin.
 type BugReportModule struct {
-	deps *Deps
-	bot  *tb.Bot
+	deps    *Deps
+	bot     *tb.Bot
+	analyze *AnalyzeModule // делегирование фото письма для розбора (ТЗ №6)
 }
 
 func NewBugReportModule(deps *Deps) *BugReportModule {
 	return &BugReportModule{deps: deps, bot: deps.Bot}
+}
+
+// SetAnalyzeModule подключает модуль розбора: фото письма органа в шаге
+// analyze:* идёт на AI-анализ, а не админу как «баг-репорт».
+func (m *BugReportModule) SetAnalyzeModule(a *AnalyzeModule) {
+	m.analyze = a
 }
 
 func (m *BugReportModule) Name() string       { return "bugreport" }
@@ -107,6 +115,10 @@ func (m *BugReportModule) HandleBugReportMedia(c tb.Context) error {
 func (m *BugReportModule) handleBugReportMedia(c tb.Context) error {
 	sess := c.Get("session").(*session.SessionData)
 	if sess.Step != "bugreport:waiting" {
+		// ТЗ №6: фото/видео в шаге розбора — передаём анализатору
+		if m.analyze != nil && strings.HasPrefix(sess.Step, "analyze:") {
+			return m.analyze.HandleMedia(c)
+		}
 		return nil // not in bug report mode — ignore
 	}
 	return m.HandleBugReportMedia(c)
