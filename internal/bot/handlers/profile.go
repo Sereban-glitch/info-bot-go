@@ -10,6 +10,77 @@ import (
 	"info-bot-go/internal/session"
 )
 
+// profileFieldSteps — фіксована послідовність кроків заповнення профілю.
+// Курсор рухається тільки вперед: після відповіді ЧИ пропуску бот питає
+// НАСТУПНИЙ крок. Стара логіка «перше порожнє поле» (askNextField) робила
+// кнопку «Пропустити» нескінченним циклом: пропущене поле лишалося
+// порожнім, і бот питав його знову і знову (баг з продакшну, 31.08:
+// «2️⃣ Введіть ваше прізвище» приїжджала на кожен клік кнопки).
+var profileFieldSteps = []string{
+	"profile:firstName",
+	"profile:lastName",
+	"profile:middleName",
+	"profile:postalAddress",
+	"profile:email",
+}
+
+// isProfileFieldStep — чи належить крок до послідовності полів профілю
+// (відрізняємо від "profile:signature" — окреме питання, не поле).
+func isProfileFieldStep(step string) bool {
+	for _, s := range profileFieldSteps {
+		if s == step {
+			return true
+		}
+	}
+	return false
+}
+
+// nextProfileStep — наступний крок послідовності; "" після останнього.
+func nextProfileStep(step string) string {
+	for i, s := range profileFieldSteps {
+		if s == step {
+			if i+1 < len(profileFieldSteps) {
+				return profileFieldSteps[i+1]
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
+// profileFieldEmpty — чи порожнє поле, що відповідає кроку.
+func profileFieldEmpty(p session.Profile, step string) bool {
+	switch step {
+	case "profile:firstName":
+		return p.FirstName == ""
+	case "profile:lastName":
+		return p.LastName == ""
+	case "profile:middleName":
+		return p.MiddleName == ""
+	case "profile:postalAddress":
+		return p.PostalAddress == ""
+	case "profile:email":
+		return p.Email == ""
+	}
+	return false
+}
+
+// applySkip — користувач пропустив поле: лишаємо його порожнім
+// (для email — спільна скринька, відповідь і так на публічній сторінці).
+func applySkip(sess *session.SessionData, step string) {
+	switch step {
+	case "profile:lastName":
+		sess.Profile.LastName = ""
+	case "profile:middleName":
+		sess.Profile.MiddleName = ""
+	case "profile:postalAddress":
+		sess.Profile.PostalAddress = ""
+	case "profile:email":
+		sess.Profile.Email = ""
+		sess.Draft.UseSharedMailbox = true
+	}
+}
+
 // ProfileModule handles /profile.
 type ProfileModule struct {
 	deps    *Deps
@@ -55,10 +126,16 @@ func (m *ProfileModule) Register() {
 
 func (m *ProfileModule) handleProfile(c tb.Context) error {
 	sess := c.Get("session").(*session.SessionData)
+	// Resume mid-flow first: Step points at the exact question the user
+	// was on — including sessions left by the old buggy build, where
+	// «Пропустити» looped forever on the same field.
+	if isProfileFieldStep(sess.Step) {
+		return m.askField(c, sess, sess.Step)
+	}
 	if session.IsProfileReady(sess.Profile) {
 		return m.showProfile(c, sess)
 	}
-	return m.askNextField(c, sess)
+	return m.askFirstEmptyField(c, sess)
 }
 
 func (m *ProfileModule) HandleText(c tb.Context, step string, text string) (bool, error) {
@@ -72,22 +149,22 @@ func (m *ProfileModule) HandleText(c tb.Context, step string, text string) (bool
 		}
 		sess.Profile.FirstName = text
 		saveSession(m.deps, c)
-		return true, m.askNextField(c, sess)
+		return true, m.askField(c, sess, nextProfileStep(step))
 
 	case "profile:lastName":
 		sess.Profile.LastName = text
 		saveSession(m.deps, c)
-		return true, m.askNextField(c, sess)
+		return true, m.askField(c, sess, nextProfileStep(step))
 
 	case "profile:middleName":
 		sess.Profile.MiddleName = text
 		saveSession(m.deps, c)
-		return true, m.askNextField(c, sess)
+		return true, m.askField(c, sess, nextProfileStep(step))
 
 	case "profile:postalAddress":
 		sess.Profile.PostalAddress = text
 		saveSession(m.deps, c)
-		return true, m.askNextField(c, sess)
+		return true, m.askField(c, sess, nextProfileStep(step))
 
 	case "profile:email":
 		if text != "" && !validEmail(text) {
@@ -101,7 +178,7 @@ func (m *ProfileModule) HandleText(c tb.Context, step string, text string) (bool
 			sess.Profile.FullName = session.ProfileDisplayName(sess.Profile)
 		}
 		saveSession(m.deps, c)
-		return true, m.showProfile(c, sess)
+		return true, m.showProfile(c, sess) // останній крок → фінальний екран
 
 	case "profile:signature":
 		name := strings.Join(strings.Fields(text), " ")
@@ -125,66 +202,73 @@ func (m *ProfileModule) handleSkip(c tb.Context) error {
 	step := sess.Step
 	log.Printf("[PROFILE] skip button pressed, step=%s, user=%d", step, c.Sender().ID)
 
-	if !strings.HasPrefix(step, "profile:") {
+	// Кнопка могла прилетіти зі старого повідомлення під час іншого
+	// кроку (наприклад, вводу підпису) або зовсім іншого модуля —
+	// нічого не пропускаємо.
+	if !isProfileFieldStep(step) {
 		return nil
 	}
 
-	switch step {
-	case "profile:lastName":
-		sess.Profile.LastName = ""
-	case "profile:middleName":
-		sess.Profile.MiddleName = ""
-	case "profile:postalAddress":
-		sess.Profile.PostalAddress = ""
-	case "profile:email":
-		sess.Profile.Email = ""
-		sess.Draft.UseSharedMailbox = true
-	}
-
-	saveSession(m.deps, c)
-	return m.askNextField(c, sess)
+	// Головний фікс: рухаємось ЯВНО до наступного кроку, а не до
+	// «першого порожнього поля» — інакше пропущене поле опинялось
+	// порожнім і бот питав його знову (нескінченний цикл кнопки).
+	applySkip(sess, step)
+	return m.askField(c, sess, nextProfileStep(step))
 }
 
-func (m *ProfileModule) askNextField(c tb.Context, sess *session.SessionData) error {
-	// Защита от nil: если модуль создан без Register() (например, через
-	// AllModules вне bot.New), skipBtn может быть nil — раньше это падало
-	// panic'ом и убивало весь процесс. Без кнопки клавиатура не добавляется.
-	sendOpts := make([]interface{}, 0, 1)
-	if m.skipBtn != nil {
+// askField — запитує КОНКРЕТНИЙ крок профілю (єдине місце, де малюються
+// питання флоу). Порожній step = послідовність завершена → фінальний екран.
+func (m *ProfileModule) askField(c tb.Context, sess *session.SessionData, step string) error {
+	// Ім'я — обов'язкове (ст. 19 ЗУ: запитувач має бути названий),
+	// решта кроків отримують кнопку «Пропустити».
+	sendOpts := make([]interface{}, 0, 2)
+	if step != "profile:firstName" && m.skipBtn != nil {
 		kb := &tb.ReplyMarkup{}
 		kb.InlineKeyboard = [][]tb.InlineButton{{*m.skipBtn}}
 		sendOpts = append(sendOpts, kb)
 	}
 
-	switch {
-	case sess.Profile.FirstName == "":
-		sess.Step = "profile:firstName"
+	switch step {
+	case "profile:firstName":
+		sess.Step = step
 		saveSession(m.deps, c)
 		return c.Send("1️⃣ Введіть ваше *ім'я*:", tb.ModeMarkdown)
 
-	case sess.Profile.LastName == "":
-		sess.Step = "profile:lastName"
+	case "profile:lastName":
+		sess.Step = step
 		saveSession(m.deps, c)
 		return c.Send("2️⃣ Введіть ваше прізвище (або пропустіть):", sendOpts...)
 
-	case sess.Profile.MiddleName == "":
-		sess.Step = "profile:middleName"
+	case "profile:middleName":
+		sess.Step = step
 		saveSession(m.deps, c)
 		return c.Send("3️⃣ По-батькові (не обов'язково):", sendOpts...)
 
-	case sess.Profile.PostalAddress == "":
-		sess.Step = "profile:postalAddress"
+	case "profile:postalAddress":
+		sess.Step = step
 		saveSession(m.deps, c)
 		return c.Send("4️⃣ Поштова адреса (не обов'язково):", sendOpts...)
 
-	case sess.Profile.Email == "":
-		sess.Step = "profile:email"
+	case "profile:email":
+		sess.Step = step
 		saveSession(m.deps, c)
 		return c.Send("5️⃣ Email (не обов'язково — відповідь і так буде на публічній сторінці запиту та в чаті):", sendOpts...)
 
 	default:
 		return m.showProfile(c, sess)
 	}
+}
+
+// askFirstEmptyField — точка входу для нового/незавершеного профілю:
+// продовжуємо з першого порожнього поля (курсор далі рухається тільки
+// вперед). Використовується ТІЛЬКИ тут, не для просування всередині флоу.
+func (m *ProfileModule) askFirstEmptyField(c tb.Context, sess *session.SessionData) error {
+	for _, s := range profileFieldSteps {
+		if profileFieldEmpty(sess.Profile, s) {
+			return m.askField(c, sess, s)
+		}
+	}
+	return m.showProfile(c, sess)
 }
 
 func (m *ProfileModule) showProfile(c tb.Context, sess *session.SessionData) error {
@@ -247,7 +331,8 @@ func (m *ProfileModule) handleEdit(c tb.Context) error {
 	sess.Profile.Email = ""
 	sess.Profile.FullName = ""
 	saveSession(m.deps, c)
-	return m.askNextField(c, sess)
+	// Після скидання всіх полів флоу починається з початку.
+	return m.askField(c, sess, "profile:firstName")
 }
 
 // handleSignBtn — кнопка «✍️ Змінити підпис»: спрашивает новую подпись
