@@ -18,6 +18,7 @@ import (
 	"info-bot-go/internal/imap"
 	"info-bot-go/internal/osint"
 	"info-bot-go/internal/ratelimiter"
+	"info-bot-go/internal/safego"
 	"info-bot-go/internal/sentlog"
 	"info-bot-go/internal/session"
 	"info-bot-go/internal/stars"
@@ -273,9 +274,71 @@ func (b *Bot) sessionMiddleware() tb.MiddlewareFunc {
 				b.stats.IncrementUsers()
 			}
 
+			// Уведомление владельцу о новом пользователе: раньше владелец
+			// не видел, приходят ли люди после приглашений (приходилось
+			// вручную смотреть файлы). Теперь бот сам сообщает о каждом
+			// новом лице — с именем, @username и счётчиком всех юзеров.
+			if isNewUser {
+				chatType := ""
+				if c.Chat() != nil {
+					chatType = string(c.Chat().Type)
+				}
+				total := 0
+				if b.stats != nil {
+					total = b.stats.Get().TotalUsers
+				}
+				sender := *c.Sender()
+				adminID := b.cfg.AdminID
+				botSend := b.bot
+				safego.Go("newuser-notify", func() {
+					if !shouldNotifyNewUser(sender.ID, adminID, chatType) {
+						return
+					}
+					if _, err := botSend.Send(tb.ChatID(adminID), newUserNotifyText(sender, total)); err != nil {
+						log.Printf("[NEWUSER] не удалось уведомить владельца о пользователе %d: %v", sender.ID, err)
+					} else {
+						log.Printf("[NEWUSER] новый пользователь %d — владелец уведомлён", sender.ID)
+					}
+				})
+			}
+
 			return err
 		}
 	}
+}
+
+// shouldNotifyNewUser решает, нужно ли уведомлять владельца о новом
+// пользователе. Не уведомляем: самого владельца (он и так всё знает)
+// и сообщения в группах (там «новым лицом» может оказаться любой
+// участник группы, который вообще не начинал работать с ботом).
+func shouldNotifyNewUser(senderID, adminID int64, chatType string) bool {
+	if adminID == 0 || senderID == 0 || senderID == adminID {
+		return false
+	}
+	return chatType == "" || chatType == string(tb.ChatPrivate)
+}
+
+// newUserNotifyText — текст уведомления владельцу о новом пользователе.
+// Чистая функция — покрыта юнит-тестами.
+func newUserNotifyText(s tb.User, totalUsers int) string {
+	name := strings.TrimSpace(strings.TrimSpace(s.FirstName) + " " + strings.TrimSpace(s.LastName))
+	if name == "" {
+		name = "без імені"
+	}
+	username := "немає"
+	if s.Username != "" {
+		username = "@" + s.Username
+	}
+	total := ""
+	if totalUsers > 0 {
+		total = fmt.Sprintf("\n👥 Всього користувачів: %d", totalUsers)
+	}
+	return fmt.Sprintf("🎉 У «Прозоро» новий користувач!\n\n"+
+		"👤 Ім'я: %s\n"+
+		"🔗 Telegram: %s\n"+
+		"🆔 ID: %d%s\n\n"+
+		"Людей стає більше — так тримати! 🚀",
+		name, username, s.ID, total)
 }
 
 func safeRegister(m handlers.Module) (err error) {
