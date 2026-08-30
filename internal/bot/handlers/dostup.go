@@ -20,6 +20,7 @@ import (
 	tb "gopkg.in/telebot.v3"
 
 	"info-bot-go/internal/dostup"
+	"info-bot-go/internal/moderation"
 	"info-bot-go/internal/safego"
 	"info-bot-go/internal/sentlog"
 	"info-bot-go/internal/session"
@@ -29,6 +30,7 @@ import (
 type DostupModule struct {
 	deps *Deps
 	bot  *tb.Bot
+	mod  *ModerationModule // ТЗ №10: антиспровокаційний скринінг (может быть nil)
 }
 
 // NewDostupModule создаёт модуль. deps.Dostup может быть nil —
@@ -36,6 +38,9 @@ type DostupModule struct {
 func NewDostupModule(deps *Deps) *DostupModule {
 	return &DostupModule{deps: deps, bot: deps.Bot}
 }
+
+// SetModerationModule — скринінг чутливих запитів (ТЗ №10).
+func (m *DostupModule) SetModerationModule(mod *ModerationModule) { m.mod = mod }
 
 func (m *DostupModule) Name() string       { return "dostup" }
 func (m *DostupModule) StepPrefix() string { return "dostup:" }
@@ -400,7 +405,7 @@ func (m *DostupModule) askSignature(c tb.Context) error {
 	if current != "" {
 		curNote = fmt.Sprintf("\n📌 Зараз: %s", htmlEscape(current))
 	}
-	return c.Send(fmt.Sprintf("✍️ <b>Як підписати ваш запит?</b>\n\nВведіть ім'я так, як має виглядати підпис у листі до органу. Це може бути:\n•\u00a0повне ім'я — <i>Іван Петренко</i>;\n•\u00a0лише ім'я — <i>Віктор</i> (прізвище не обов'язкове);\n•\u00a0скоро́чено — <i>І. Петренко</i>.%s\n\n⚠️ <b>Важливо:</b> підпис має бути вашим <b>справжнім ім'ям</b>. Вигадане ім'я дає органу право не відповідати (ст. 19 ЗУ «Про доступ до публічної інформації»), а систематичні фейкові підписи можуть призвести до блокування спільного акаунта на порталі.\n🔒 Акаунт на порталі лишається технічним («Громадський моніторинг»), але лист підписано вашим ім'ям.\n📖 Текст запиту разом із підписом буде опубліковано на відкритій сторінці запиту.", curNote), tb.ModeHTML)
+	return c.Send(fmt.Sprintf("✍️ <b>Як підписати ваш запит?</b>\n\nВведіть ім'я так, як має виглядати підпис у листі до органу. Це може бути:\n•\u00a0повне ім'я — <i>Іван Петренко</i>;\n•\u00a0лише ім'я — <i>Віктор</i> (прізвище не обов'язкове);\n•\u00a0скоро́чено — <i>І. Петренко</i>.%s\n\n💡 <b>Порада:</b> закон не вимагає підтверджувати особу, тож псевдонім не заборонений. Але справжнє ім'я надійніше — орган бачить конкретного запитувача і ретельніше відповідає, а оскаржити мовчанку простіше.\n⚠️ Жартівливі або явно вигадані підписи шкодять усім: за скаргою на такий запит можуть заблокувати спільний акаунт порталу, через який надсилаються запити всіх користувачів.\n🔒 Акаунт на порталі лишається технічним («Громадський моніторинг»), але лист підписано вашим ім'ям.\n📖 Текст запиту разом із підписом буде опубліковано на відкритій сторінці запиту.", curNote), tb.ModeHTML)
 }
 
 // HandleText — обработка текстовых шагов dostup-потока.
@@ -548,8 +553,6 @@ func (m *DostupModule) handleSubmit(c tb.Context) error {
 		return m.askSignature(c)
 	}
 
-	_ = c.Edit("⏳ Подаю запит на порталі (двокрокова форма)...")
-
 	// Тема запроса: префикс + тема из черновика
 	title := sess.Draft.Subject
 	if len(title) > 150 {
@@ -558,6 +561,19 @@ func (m *DostupModule) handleSubmit(c tb.Context) error {
 
 	// Тело запроса: данные профиля + текст
 	data := buildDostupBody(sess)
+
+	// ТЗ №10 — антиспровокаційний скринінг: чутливі у воєнний час
+	// запити (розвідка/посади/держтаємниця/приватність третіх осіб)
+	// НЕ йдуть на спільний акаунт порталу одразу — власник отримує
+	// картку з кнопками ✅/❌. Реальний тригер: 30.08.2026 запит про
+	// військову посаду Буданова К.О. під підписом «Шварцнегер».
+	if m.mod != nil && m.mod.Screening() {
+		if v := moderation.Check(title, data, sess.Draft.RecipientName); v.Hold {
+			return m.mod.HoldDostup(c, sess, title, data, v)
+		}
+	}
+
+	_ = c.Edit("⏳ Подаю запит на порталі (двокрокова форма)...")
 
 	info, err := m.deps.Dostup.SubmitRequest(sess.Draft.DostupSlug, title, data)
 	if err != nil {
@@ -640,6 +656,12 @@ func (m *DostupModule) handleSubmit(c tb.Context) error {
 			Organ:   sess.Draft.RecipientName,
 			URL:     info.URL,
 		})
+	}
+	// ТЗ №10: власник бачить КОЖНУ відправку через спільний акаунт
+	// у реальному часі (крім власних тестів)
+	if m.mod != nil {
+		m.mod.NotifySent(c.Sender().ID, telegramName(c), telegramUsername(c),
+			session.SignatureName(sess.Profile), sess.Draft.RecipientName, title, info.URL)
 	}
 	sess.Draft = Draft{}
 	saveSession(m.deps, c)

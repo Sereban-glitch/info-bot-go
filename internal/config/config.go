@@ -94,6 +94,14 @@ type Config struct {
 	// --- ТЗ №8 (блок E): тижневий дайджест власнику ---
 	DigestEnabled bool // авто-отчёт раз в неделю (понедельник)
 	DigestHour    int  // час отправки по Киеву (0-23)
+
+	// --- ТЗ №10: антиспровокаційний скринінг запитів ---
+	// Чутливі у воєнний час теми (розвідка, військова посада,
+	// держтаємниця, приватність третіх осіб) не йдуть на спільний
+	// акаунт порталу без рішення власника; власник отримує
+	// сповіщення про кожну відправку. MODERATION_ENABLED=false
+	// повертає поведінку «усе летить одразу».
+	ModerationEnabled bool
 }
 
 func Load() (*Config, error) {
@@ -154,6 +162,10 @@ func Load() (*Config, error) {
 		// Тижневий дайджест власнику (ТЗ №8, E3)
 		DigestEnabled: getEnvBool("DIGEST_ENABLED", true),
 		DigestHour:    getEnvInt("DIGEST_HOUR", 9),
+
+		// Антиспровокаційний скринінг (ТЗ №10) — захист увімкнений
+		// за замовчуванням: відключення — свідоме рішення через env.
+		ModerationEnabled: getEnvBool("MODERATION_ENABLED", true),
 	}
 
 	// If SMTP_USER is not set, fall back to GMAIL_USER

@@ -197,6 +197,15 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 		}
 	}
 
+	// ТЗ №10: антиспровокаційний скринінг — нагадування власнику про
+	// незрішені запити після рестарту (черга живе у файлі).
+	for _, m := range modules {
+		if mm, ok := m.(*handlers.ModerationModule); ok {
+			mm.Start()
+			break
+		}
+	}
+
 	// Universal text dispatcher.
 	// ВАЖНО: передаём ЗАРЕГИСТРИРОВАННЫЕ экземпляры модулей, а не создаём
 	// новые через AllModules(deps) — иначе Register() не вызывается и

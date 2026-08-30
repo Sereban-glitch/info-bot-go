@@ -92,12 +92,17 @@ func AllModules(deps *Deps) []Module {
 	analyzeMod := NewAnalyzeModule(deps)
 	starsMod := NewStarsModule(deps)
 	digestMod := NewDigestModule(deps)
+	moderationMod := NewModerationModule(deps)
 
 	voiceMod.SetBugReportModule(bugReportMod)
 	analyzeMod.SetStarsModule(starsMod)
 	voiceMod.SetFollowUpModule(followUpMod)
 	voiceMod.SetAnalyzeModule(analyzeMod)
 	bugReportMod.SetAnalyzeModule(analyzeMod)
+	// ТЗ №10: обидва канали відправки (портал + email) — під скринінгом
+	dostupMod.SetModerationModule(moderationMod)
+	newReqMod.SetModerationModule(moderationMod)
+	moderationMod.SetDostupModule(dostupMod)
 
 	return []Module{
 		startMod,
@@ -125,6 +130,7 @@ func AllModules(deps *Deps) []Module {
 		analyzeMod,
 		starsMod,
 		digestMod,
+		moderationMod,
 	}
 }
 

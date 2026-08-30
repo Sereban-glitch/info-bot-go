@@ -13,6 +13,7 @@ import (
 	tb "gopkg.in/telebot.v3"
 
 	"info-bot-go/internal/email"
+	"info-bot-go/internal/moderation"
 	"info-bot-go/internal/osint"
 	"info-bot-go/internal/sentlog"
 	"info-bot-go/internal/session"
@@ -23,11 +24,15 @@ import (
 type NewRequestModule struct {
 	deps *Deps
 	bot  *tb.Bot
+	mod  *ModerationModule // ТЗ №10: скринінг email-каналу (может быть nil)
 }
 
 func NewNewRequestModule(deps *Deps) *NewRequestModule {
 	return &NewRequestModule{deps: deps, bot: deps.Bot}
 }
+
+// SetModerationModule — скринінг чутливих запитів для email-каналу (ТЗ №10).
+func (m *NewRequestModule) SetModerationModule(mod *ModerationModule) { m.mod = mod }
 
 func (m *NewRequestModule) Name() string       { return "new-request" }
 func (m *NewRequestModule) StepPrefix() string { return "new:" }
@@ -300,8 +305,6 @@ func (m *NewRequestModule) handleSendConfirm(c tb.Context) error {
 		return c.Send("❌ Добовий ліміт надсилання вичерпано (280/280). Спробуйте завтра.")
 	}
 
-	_ = c.Edit("⏳ Генеруємо PDF та надсилаємо...")
-
 	replyTo := os.Getenv("GMAIL_USER")
 	if replyTo == "" {
 		replyTo = "publicinquiry69@gmail.com"
@@ -313,6 +316,16 @@ func (m *NewRequestModule) handleSendConfirm(c tb.Context) error {
 
 	subject := email.BuildSubject(data.Subject)
 	bodyText := email.BuildRequestText(*data)
+
+	// ТЗ №10 — антиспровокаційний скринінг: email-канал також йде зі
+	// спільної скриньки, чутливі запити — тільки після перевірки.
+	if m.mod != nil && m.mod.Screening() {
+		if v := moderation.Check(data.Subject, bodyText, data.RecipientName); v.Hold {
+			return m.mod.HoldEmail(c, sess, subject, bodyText, sess.Draft.RecipientEmail, replyTo, cc, v)
+		}
+	}
+
+	_ = c.Edit("⏳ Генеруємо PDF та надсилаємо...")
 	pdfBytes, pdfErr := generateFOIRequestPDF(*data)
 	var msgID string
 	var err error
@@ -341,6 +354,12 @@ func (m *NewRequestModule) handleSendConfirm(c tb.Context) error {
 	if m.deps.Stats != nil {
 		m.deps.Stats.IncrementRequests()
 		m.deps.Stats.IncrementModule("new_request")
+	}
+
+	// ТЗ №10: власник бачить кожну відправку email-каналу в реальному часі
+	if m.mod != nil {
+		m.mod.NotifySent(c.Sender().ID, telegramName(c), telegramUsername(c),
+			session.SignatureName(sess.Profile), data.RecipientName, data.Subject, "")
 	}
 
 	sess.Step = "idle"
