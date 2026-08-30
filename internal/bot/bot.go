@@ -185,6 +185,15 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 		}
 	}
 
+	// ТЗ №8 (E3): еженедельный дайджест владельцу — фоновый цикл
+	// (понедельник 09:00 по Киеву; /digest доступен всегда).
+	for _, m := range modules {
+		if dm, ok := m.(*handlers.DigestModule); ok {
+			dm.Start()
+			break
+		}
+	}
+
 	// Universal text dispatcher.
 	// ВАЖНО: передаём ЗАРЕГИСТРИРОВАННЫЕ экземпляры модулей, а не создаём
 	// новые через AllModules(deps) — иначе Register() не вызывается и
@@ -265,6 +274,11 @@ func (b *Bot) sessionMiddleware() tb.MiddlewareFunc {
 
 			c.Set("session", sess)
 			c.Set("sessionKey", key)
+
+			// ТЗ №8 (E2): фиксируем время ПРЕДЫДУЩЕГО визита до обновления —
+			// по нему /start решает, показать ли вернувшемуся «Що нового».
+			c.Set("prevSeen", sess.LastSeenAt)
+			sess.LastSeenAt = time.Now()
 
 			err = next(c)
 

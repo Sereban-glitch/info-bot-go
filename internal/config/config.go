@@ -90,6 +90,10 @@ type Config struct {
 	StarsAnalyzePack  int    // кредитов (розборов) в пакете
 	StarsFreeCredits  int    // стартовый бонус новому пользователю
 	StarsStoreFile    string // файл балансов кредитов
+
+	// --- ТЗ №8 (блок E): тижневий дайджест власнику ---
+	DigestEnabled bool // авто-отчёт раз в неделю (понедельник)
+	DigestHour    int  // час отправки по Киеву (0-23)
 }
 
 func Load() (*Config, error) {
@@ -146,6 +150,10 @@ func Load() (*Config, error) {
 		StarsFreeCredits:    getEnvInt("STARS_FREE_CREDITS", 3),
 		StarsStoreFile:      getEnvOrDefault("STARS_STORE_FILE", "stars_credits.json"),
 		APIRateLimitAnalyze: getEnvInt("API_RATE_LIMIT_ANALYZE", 6),
+
+		// Тижневий дайджест власнику (ТЗ №8, E3)
+		DigestEnabled: getEnvBool("DIGEST_ENABLED", true),
+		DigestHour:    getEnvInt("DIGEST_HOUR", 9),
 	}
 
 	// If SMTP_USER is not set, fall back to GMAIL_USER

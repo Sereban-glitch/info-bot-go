@@ -56,7 +56,7 @@ func (m *StartModule) Register() {
 }
 
 func (m *StartModule) handleStart(c tb.Context) error {
-	_ = c.Get("session").(*session.SessionData)
+	sess := c.Get("session").(*session.SessionData)
 
 	// Set chat menu button
 	if m.deps.Cfg.MiniAppURL != "" {
@@ -82,7 +82,48 @@ func (m *StartModule) handleStart(c tb.Context) error {
 		"🔍 Пошук органу: надішліть назву прямо в чат"
 
 	kb := MainMenuKeyboard(m.deps.Cfg, c.Sender().ID)
-	return c.Send(welcome, kb, tb.ModeMarkdown)
+	if err := c.Send(welcome, kb, tb.ModeMarkdown); err != nil {
+		return err
+	}
+
+	// ТЗ №8 (E2): вернувшийся после 14+ дней отсутствия получает короткую
+	// сводку «что нового» — главный магнит возврата: розбір и рейтинг.
+	prevSeen, _ := c.Get("prevSeen").(time.Time)
+	if shouldShowWhatsNew(prevSeen, sess.WhatsNewShownAt, time.Now()) {
+		sess.WhatsNewShownAt = time.Now()
+		whatsNew := "👋 <b>З поверненням!</b> Поки вас не було, бот підрос:\n\n" +
+			"⚖️ <b>Розбір відповідей органів</b> — надішліть відповідь органу (текстом, фото чи голосом), і AI визначить: відмова це чи відповідь по суті, чи законна вона, — і підготує готову скаргу чи уточнення.\n\n" +
+			"🏆 <b>Рейтинг відкритості</b> — усі 2145 органів України: хто відповідає на запити, а хто ігнорує.\n\n" +
+			"Спробуйте розбір — кнопка нижче ⚡"
+		_ = c.Send(whatsNew, tb.ModeHTML)
+	}
+
+	// ТЗ №8 (E1): «первый успех за 30 секунд» — демо-розбір в один клик
+	// для тех, кто ещё не пробовал (один раз на пользователя).
+	if !sess.DemoAnalyzeDone {
+		demoKB := &tb.ReplyMarkup{}
+		demoKB.InlineKeyboard = [][]tb.InlineButton{
+			{{Unique: "an_demo", Text: "⚡ Спробувати розбір на прикладі (30 сек)"}},
+		}
+		_ = c.Send("⚡ Хочете побачити силу бота за 30 секунд — без свого листа?", demoKB)
+	}
+	return nil
+}
+
+// shouldShowWhatsNew решает, показать ли вернувшемуся «Що нового»:
+// отсутствовал 14+ дней, и последнее «что нового» показывали тоже
+// больше 14 дней назад (защита от спама при частых возвращениях).
+func shouldShowWhatsNew(prevSeen, shownAt, now time.Time) bool {
+	if prevSeen.IsZero() {
+		return false // новичок: ему положен онбординг, а не «что нового»
+	}
+	if now.Sub(prevSeen) < 14*24*time.Hour {
+		return false // уходил ненадолго
+	}
+	if !shownAt.IsZero() && now.Sub(shownAt) < 14*24*time.Hour {
+		return false // недавно уже показывали
+	}
+	return true
 }
 
 // ---------------------------------------------------------------------------

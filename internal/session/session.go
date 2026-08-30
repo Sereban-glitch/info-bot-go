@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Profile holds user personal data.
@@ -89,6 +90,11 @@ type SessionData struct {
 	// о публичности портала «Доступ до правди» (что публикуется открыто,
 	// что маскирует портал). Флаг персистентный: повторно не показываем.
 	DostupDisclosureShown bool `json:"dostupDisclosureShown,omitempty"`
+
+	// ТЗ №8 (блок E): первый успех и возвращающиеся пользователи.
+	LastSeenAt      time.Time `json:"lastSeenAt,omitempty"`      // когда был последний визит (обновляется на каждом апдейте)
+	WhatsNewShownAt time.Time `json:"whatsNewShownAt,omitempty"` // когда последний раз показывали «Що нового»
+	DemoAnalyzeDone bool      `json:"demoAnalyzeDone,omitempty"` // демо-розбор уже показан (защита AI-квоты)
 }
 
 // NewSessionData returns a blank session.

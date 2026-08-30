@@ -79,6 +79,10 @@ func (m *AnalyzeModule) Register() {
 	m.bot.Handle(&copyBtn, safeHandler("an_copy", m.handleCopyDoc))
 	cancelBtn := tb.InlineButton{Unique: "an_cancel"}
 	m.bot.Handle(&cancelBtn, safeHandler("an_cancel", m.handleCancel))
+
+	// ТЗ №8 (E1): демо-розбір в один клик — «первый успех за 30 секунд».
+	demoBtn := tb.InlineButton{Unique: "an_demo"}
+	m.bot.Handle(&demoBtn, safeHandler("an_demo", m.handleDemo))
 }
 
 // handleStart — /analyze: инструкция и переход в ожидание ответа органа.
@@ -99,7 +103,52 @@ func (m *AnalyzeModule) handleStart(c tb.Context) error {
 		"Визначу: це відмова чи відповідь по суті, чи законна вона, які статті порушено — і підготую готовий документ (уточнення, скаргу чи звернення).\n\n" +
 		"ℹ️ Це автоматична оцінка, а не юридична консультація.\n\n" +
 		"Скасувати: /cancel"
+
+	// Демо в один клик: показываем тем, кто ещё не пробовал (квота!)
+	if !sess.DemoAnalyzeDone {
+		kb := &tb.ReplyMarkup{}
+		kb.InlineKeyboard = [][]tb.InlineButton{
+			{{Unique: "an_demo", Text: "⚡ Спробувати на прикладі (30 сек)"}},
+		}
+		text += "\n\n<i>Або спробуйте на готовому прикладі — без свого листа:</i>"
+		return c.Send(text, kb, tb.ModeHTML)
+	}
 	return c.Send(text, tb.ModeHTML)
+}
+
+// demoReply — учебный пример ответа органа для демо-розбора.
+// Реалистичный кейс на основе живого обращения: ТЦК объясняет
+// происхождение данных о судимости в реестре «Оберіг».
+const demoOrgan = "ТЦК та СП (територіальний центр комплектування)"
+const demoSubject = "Походження відомостей про судимість у реєстрі «Оберіг»"
+const demoReply = "Ваше звернення, надіслане через народного депутата України, розглянуто в порядку Закону України «Про звернення громадян».\n\n" +
+	"Відомості про судимість громадянина внесено до реєстру військовозобов'язаних «Оберіг» автоматично шляхом електронної інформаційної взаємодії з Міністерством юстиції України.\n\n" +
+	"Інформацію надано в повному обсязі. Порушень вимог законодавства не виявлено."
+
+// handleDemo — кнопка «Спробувати на прикладі»: подставляем учебный
+// ответ ТЦК и запускаем обычный розбор. Демо не списывает кредит и не
+// тратит часовой лимит — это бесплатная «проба пера» для новичка.
+func (m *AnalyzeModule) handleDemo(c tb.Context) error {
+	_ = c.Respond()
+	if m.deps.Gemini == nil || !m.deps.Gemini.Available() {
+		return c.Send("⚠️ AI-розбір зараз недоступний (немає робочого ключа моделі). Спробуйте пізніше.")
+	}
+	sess := c.Get("session").(*session.SessionData)
+	if sess.DemoAnalyzeDone {
+		// Кнопку могли нажать повторно (старое сообщение) — не тратим квоту.
+		return c.Send("ℹ️ Демо ви вже дивились. Надішліть свою відповідь органу — розберу її: /analyze")
+	}
+	sess.DemoAnalyzeDone = true
+	sess.Step = "idle"
+	sess.Analyze = &AnalyzeDraft{
+		Organ:     demoOrgan,
+		Subject:   demoSubject,
+		ReplyText: demoReply,
+	}
+	saveSession(m.deps, c)
+	log.Printf("[ANALYZE] demo start user=%d", c.Sender().ID)
+	_ = c.Send("⚡ Демо: розбираю реальну відповідь ТЦК (з практики). Через кілька секунд — вердикт, а потім готовий документ.")
+	return m.runAnalysisOpt(c, sess, nil, true)
 }
 
 // OfferForward — пересланный в покое длинный текст: предлагаем разбор.
@@ -273,11 +322,17 @@ func (m *AnalyzeModule) handleFromNotification(c tb.Context) error {
 }
 
 // precheck — доступность AI + лимит + индикатор «печатает».
+// demo=true — показательный запуск: без списания кредита и без часового
+// лимита (один демо на пользователя, флаг в сессии).
 // Возвращает false, если пользователю уже отправлено сообщение об ошибке.
-func (m *AnalyzeModule) precheck(c tb.Context) bool {
+func (m *AnalyzeModule) precheck(c tb.Context, demo bool) bool {
 	if m.deps.Gemini == nil || !m.deps.Gemini.Available() {
 		_ = c.Send("⚠️ AI-розбір зараз недоступний (немає робочого ключа моделі). Спробуйте пізніше.")
 		return false
+	}
+	if demo {
+		_ = c.Bot().Notify(c.Sender(), tb.Typing)
+		return true
 	}
 	uid := c.Sender().ID
 	// Монетизация: включена — списываем 1 кредит (оплаченные розборы идут
@@ -311,16 +366,22 @@ func (m *AnalyzeModule) buyCmd(c tb.Context) error {
 
 // runAnalysis — вызов модели, карточка вердикта и готовый документ.
 func (m *AnalyzeModule) runAnalysis(c tb.Context, sess *session.SessionData, photo []byte) error {
+	return m.runAnalysisOpt(c, sess, photo, false)
+}
+
+// runAnalysisOpt — общий путь розбора; demo=true — показательный запуск
+// без списания кредита (первый успех для нового пользователя).
+func (m *AnalyzeModule) runAnalysisOpt(c tb.Context, sess *session.SessionData, photo []byte, demo bool) error {
 	d := sess.Analyze
 	if d == nil || (strings.TrimSpace(d.ReplyText) == "" && len(photo) == 0) {
 		return c.Send("❌ Немає тексту відповіді. Почніть заново: /analyze")
 	}
-	if !m.precheck(c) {
+	if !m.precheck(c, demo) {
 		return nil
 	}
 	// Монетизация: если кредит был списан в precheck — при сбое модели
 	// возвращаем его пользователю (честная оплата только за результат).
-	spentCredit := m.deps.Cfg.StarsEnabled && m.deps.Stars != nil
+	spentCredit := !demo && m.deps.Cfg.StarsEnabled && m.deps.Stars != nil
 
 	// Разбор идёт в два этапа: сперва БЫСТРЫЙ вердикт (пользователь видит
 	// оценку за секунды), затем — готовый документ, который печатается
