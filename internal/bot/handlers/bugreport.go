@@ -52,6 +52,42 @@ func (m *BugReportModule) handleBugReportBtn(c tb.Context) error {
 	)
 }
 
+// buildBugReportAdminHTML — карточка багрепорта для админа в HTML
+// с экранированием ВСЕХ пользовательских данных. Раньше текст собирался
+// в Markdown без экранирования: имя/юзернейм с «_», «*» или «[» ломали
+// парсинг (Bad Request: can't parse entities), и репорт ТИХО терялся —
+// пользователь видел «Дякуємо! Ваш звіт відправлено», а админ ничего
+// не получал (реальный случай 30.08.2026, 22:20).
+func buildBugReportAdminHTML(username string, userID int64, firstName, lastName, report string) string {
+	name := strings.TrimSpace(firstName + " " + lastName)
+	if name == "" {
+		name = "—"
+	}
+	var at string
+	if username != "" {
+		at = "@" + username
+	} else {
+		at = "—"
+	}
+	return fmt.Sprintf(
+		"🐞 <b>Звіт про помилку</b>\n\n👤 Від: %s (ID: %d)\n👤 Ім'я: %s\n\n📝 %s",
+		htmlEscape(at), userID, htmlEscape(name), htmlEscape(report))
+}
+
+// sendAdminReport — доставка репорта админу с гарантией: сначала HTML
+// (экранированный), при сетевой/API ошибке — повтор без форматирования,
+// чтобы репорт не терялся никогда.
+func (m *BugReportModule) sendAdminReport(text string) error {
+	if _, err := m.bot.Send(tb.ChatID(m.deps.Cfg.AdminID), text, tb.ModeHTML); err != nil {
+		log.Printf("[BUGREPORT] HTML send failed (%v), retrying plain", err)
+		_, err2 := m.bot.Send(tb.ChatID(m.deps.Cfg.AdminID), text)
+		if err2 != nil {
+			return err2
+		}
+	}
+	return nil
+}
+
 // HandleBugReportMedia processes media messages when step is "bugreport:waiting".
 // This is called both from our own OnPhoto/OnVideo/OnDocument handlers AND
 // from voice.go's OnVoice handler (delegated).
@@ -66,12 +102,11 @@ func (m *BugReportModule) HandleBugReportMedia(c tb.Context) error {
 	user := c.Sender()
 	msg := c.Message()
 
-	// Build admin notification with user info
-	prefix := fmt.Sprintf("🐞 *Звіт про помилку*\n\n👤 Від: @%s (ID: %d)\n👤 Ім'я: %s %s\n\n",
-		user.Username, user.ID, user.FirstName, user.LastName)
+	// Карточка для админа: HTML + экранирование (см. buildBugReportAdminHTML)
+	prefix := buildBugReportAdminHTML(user.Username, user.ID, user.FirstName, user.LastName, "(медіа — див. нижче)")
 
 	// Send text-based notification to admin first
-	if _, err := m.bot.Send(tb.ChatID(m.deps.Cfg.AdminID), prefix, tb.ModeMarkdown); err != nil {
+	if err := m.sendAdminReport(prefix); err != nil {
 		log.Printf("[BUGREPORT] failed to send prefix to admin: %v", err)
 	}
 
@@ -139,11 +174,9 @@ func (m *BugReportModule) HandleText(c tb.Context, step string, text string) (bo
 
 	user := c.Sender()
 
-	// Forward text report to admin
-	adminText := fmt.Sprintf("🐞 *Звіт про помилку*\n\n👤 Від: @%s (ID: %d)\n👤 Ім'я: %s %s\n\n📝 %s",
-		user.Username, user.ID, user.FirstName, user.LastName, text)
-
-	if _, err := m.bot.Send(tb.ChatID(m.deps.Cfg.AdminID), adminText, tb.ModeMarkdown); err != nil {
+	// Forward text report to admin: HTML + экранирование + plain-fallback
+	adminText := buildBugReportAdminHTML(user.Username, user.ID, user.FirstName, user.LastName, text)
+	if err := m.sendAdminReport(adminText); err != nil {
 		log.Printf("[BUGREPORT] failed to send text report to admin: %v", err)
 	}
 
