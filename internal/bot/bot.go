@@ -97,6 +97,11 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 		rateLim:  rl,
 	}
 
+	// Аналитика для Арчи-монитора: каждое действие пользователя
+	// (команда, кнопка, голос, фото) оставляет строку [BTN] в журнале.
+	// Содержимое текста НЕ пишется (приватность) — только тип действия.
+	b.Use(botInst.auditMiddleware())
+
 	b.Use(botInst.sessionMiddleware())
 
 	// Монетизация Stars (каркас): хранилище кредитов всегда создаётся,
@@ -255,6 +260,79 @@ func (b *Bot) Stop() {
 		b.rateLim.Stop()
 	}
 	b.bot.Stop()
+}
+
+// auditMiddleware — «кнопочный счётчик» для Арчи-монитора.
+// Одно короткое событие [BTN] на каждое действие пользователя:
+//
+//	[BTN] user=123 act=cmd:/start
+//	[BTN] user=123 act=btn:donate          (инлайн-кнопка, идентификатор)
+//	[BTN] user=123 act=menu:📚 Шаблони     (кнопка меню внизу чата)
+//	[BTN] user=123 act=msg:text            (текст сообщения — БЕЗ содержимого)
+//	[BTN] user=123 act=msg:voice|photo|document
+//
+// Приватность: текст сообщений и голос не логируются никогда — только факт.
+// Идентификаторы инлайн-кнопок и подписи кнопок меню — не персональные данные.
+func (b *Bot) auditMiddleware() tb.MiddlewareFunc {
+	return func(next tb.HandlerFunc) tb.HandlerFunc {
+		return func(c tb.Context) error {
+			if c.Sender() != nil {
+				if act := auditAction(c.Update()); act != "" {
+					log.Printf("[BTN] user=%d act=%s", c.Sender().ID, act)
+				}
+			}
+			return next(c)
+		}
+	}
+}
+
+// auditAction — чистая классификация апдейта в короткое действие для [BTN]-журнала.
+// Пустая строка = не логировать (служебные апдейты без действия пользователя).
+func auditAction(u tb.Update) string {
+	switch {
+	case u.Callback != nil:
+		// Инлайн-кнопка: Unique-идентификатор без payload (payload может
+		// содержать slug органа — не нужен для статистики).
+		data := u.Callback.Data
+		if i := strings.IndexByte(data, '|'); i > 0 {
+			data = data[:i]
+		}
+		data = strings.TrimSpace(strings.TrimPrefix(data, "\f"))
+		if len(data) > 40 {
+			data = data[:40]
+		}
+		return "btn:" + data
+	case u.Message != nil && u.Message.Voice != nil:
+		return "msg:voice"
+	case u.Message != nil && u.Message.Photo != nil:
+		return "msg:photo"
+	case u.Message != nil && u.Message.Document != nil:
+		return "msg:document"
+	case u.Message != nil && u.Message.Text != "":
+		text := strings.TrimSpace(u.Message.Text)
+		if strings.HasPrefix(text, "/") {
+			// команда: отрезать аргументы (/find івано — /find)
+			cmd := strings.Fields(text)[0]
+			return "cmd:" + strings.SplitN(cmd, "@", 2)[0]
+		}
+		// известная кнопка меню — пишем подпись; произвольный текст —
+		// только факт, содержимое НЕ логируем
+		if menuLabels[text] {
+			return "menu:" + text
+		}
+		return "msg:text"
+	}
+	return ""
+}
+
+// menuLabels — точный список кнопок меню (reply keyboard). Всё, что не команда
+// и не кнопка из этого списка — произвольный текст, содержимое НЕ логируем.
+var menuLabels = map[string]bool{
+	"ℹ️ Довідка": true, "⏰ Терміни": true, "🌟 Підтримати проект": true,
+	"🐞 Повідомити про помилку": true, "👤 Мій профіль": true,
+	"💳 Купити розбори": true, "💾 Бекап проєкту": true, "📊 Статистика": true,
+	"📚 Шаблони": true, "📝 Новий запит": true, "📞 Гарячі лінії": true,
+	"📨 Мої запити": true, "🔍 Розбір відповіді": true,
 }
 
 func (b *Bot) sessionMiddleware() tb.MiddlewareFunc {
