@@ -526,39 +526,60 @@ func (w *DostupSync) sendNotifyWithAnalyze(userID int64, text, slug string) {
 }
 
 // remindOverdueThreads — для гилок без ответа по существу, у которых
-// строк (5 рабочих дней) минул: одно напоминание «допишите в гилку»
-// (не чаще раза в сутки на гилку).
+// строк (5 рабочих дней) минул: ОДНО сгруппированное напоминание
+// «допишите в гилки» на пользователя в сутки (просьба владельца:
+// не спамить; раньше — отдельное сообщение на каждую гилку).
 func (w *DostupSync) remindOverdueThreads() {
 	if w.followUp == nil || w.deps.FollowUps == nil {
 		return
 	}
-	for _, e := range w.deps.SentLog.ListAll() {
+	grouped, reminded := groupOverdueThreads(w.deps.SentLog.ListAll(), func(userID int64) []FollowUpThread {
+		return w.deps.FollowUps.List(userID, 30)
+	}, time.Now())
+
+	for userID, items := range grouped {
+		// Любая гилка этого пользователя получала напоминание за
+		// последние 24 часа — сегодня молчим целиком.
+		if reminded[userID] {
+			continue
+		}
+		w.followUp.OfferOverdueReminders(userID, items)
+		log.Printf("[DOSTUP-SYNC] напоминание о просрочке (групповое): user=%d, гилок=%d", userID, len(items))
+	}
+}
+
+// groupOverdueThreads — чистая группировка просроченных гилок по
+// пользователям для сгруппированного напоминания. Возвращает:
+//
+//	grouped  — userID → просроченные гилки (дедлайн уже минул);
+//	reminded — пользователи, которым напоминали за последние 24 часа.
+func groupOverdueThreads(entries []sentlog.SentEntry, threadsOf func(userID int64) []FollowUpThread, now time.Time) (map[int64][]OverdueItem, map[int64]bool) {
+	grouped := make(map[int64][]OverdueItem)
+	reminded := make(map[int64]bool)
+
+	for _, e := range entries {
 		if e.Channel != "dostup" || e.URL == "" {
 			continue
 		}
 		slug := strings.TrimPrefix(e.MessageID, "dostup:")
-		threads := w.deps.FollowUps.List(e.UserID, 30)
-		for _, th := range threads {
-			if th.Slug != slug {
+		for _, th := range threadsOf(e.UserID) {
+			if th.Slug != slug || th.RepliedAt != "" {
 				continue
 			}
-			// Ответ уже пришёл или недавно напоминали — пропускаем
-			if th.RepliedAt != "" {
-				continue
-			}
+			// Пользователю уже напоминали за последние 24 часа — фиксируем.
 			if th.LastRemindAt != "" {
-				if t, err := time.Parse(time.RFC3339, th.LastRemindAt); err == nil && time.Since(t) < 24*time.Hour {
-					continue
+				if t, err := time.Parse(time.RFC3339, th.LastRemindAt); err == nil && now.Sub(t) < 24*time.Hour {
+					reminded[e.UserID] = true
 				}
 			}
 			deadline := replyDeadline(e.Date)
-			if deadline.IsZero() || time.Now().Before(deadline) {
+			if deadline.IsZero() || now.Before(deadline) {
 				continue
 			}
-			w.followUp.OfferOverdueReminder(e.UserID, th, deadline.Format("02.01.2006"))
-			log.Printf("[DOSTUP-SYNC] напоминание о просрочке: %s (user %d)", slug, e.UserID)
+			grouped[e.UserID] = append(grouped[e.UserID], OverdueItem{Thread: th, Deadline: deadline})
 		}
 	}
+	return grouped, reminded
 }
 
 // replyDeadline — дедлайн ответа (5 рабочих дней с даты отправки).

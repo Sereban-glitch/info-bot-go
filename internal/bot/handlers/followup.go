@@ -4,7 +4,7 @@ package handlers
 //
 // Сценарії входа:
 //   1. Команда /followup — список гилок пользователя → выбор → текст/голос;
-//   2. Предложение от DostupSync (OfferOverdueReminder): строк ответа минул —
+//   2. Сгруппированное предложение от DostupSync (OfferOverdueReminders): строк ответа минул —
 //      пользователь сразу получает кнопку «Дописати у гілку запиту»;
 //   3. После ответа органа по существу — можно дописать вопрос в ту же гилку.
 //
@@ -128,11 +128,26 @@ func (m *FollowUpModule) handlePick(c tb.Context) error {
 		htmlEscape(th.Organ), htmlEscape(th.Subject)), kb, tb.ModeHTML)
 }
 
-// OfferOverdueReminder — приглашение дописать в просроченную гилку
-// (вызывается DostupSync, когда строк ответа минул).
-func (m *FollowUpModule) OfferOverdueReminder(userID int64, th FollowUpThread, deadlineStr string) {
+// OverdueItem — просроченная гилка для сгруппированного напоминания.
+type OverdueItem struct {
+	Thread   FollowUpThread
+	Deadline time.Time
+}
+
+// OfferOverdueReminders — сгруппированное приглашение дописать в
+// просроченные гилки: ОДНО сообщение со всеми запитами пользователя
+// (вызывается DostupSync не чаще раза в сутки на пользователя).
+func (m *FollowUpModule) OfferOverdueReminders(userID int64, items []OverdueItem) {
+	if len(items) == 0 {
+		return
+	}
+	// Помечаем ДО отправки: даже если Telegram упадёт, не спамим
+	// повторами каждые 20 минут — следующее напоминание завтра.
 	if m.deps.FollowUps != nil {
-		m.deps.FollowUps.MarkReminded(userID, th.Slug, time.Now().Format(time.RFC3339))
+		now := time.Now().Format(time.RFC3339)
+		for _, it := range items {
+			m.deps.FollowUps.MarkReminded(userID, it.Thread.Slug, now)
+		}
 	}
 	target := userID
 	if target == 0 {
@@ -146,11 +161,18 @@ func (m *FollowUpModule) OfferOverdueReminder(userID int64, th FollowUpThread, d
 		{{Unique: "fu_pick", Text: "✍️ Дописати у гілку запиту", Data: "0"}},
 		{{Unique: "fu_cancel", Text: "❌ Закрити"}},
 	}
-	text := fmt.Sprintf("⚠️ <b>Запит потребує уваги</b>\n\n🏛 <b>%s</b>\n📂 «%s»\n\nСтрок відповіді (%s) минув, а відповіді по суті ще немає.\n\nМожна дописати повідомлення у ту ж гілку запиту — нагадати органу про себе чи уточнити запит. Це часто прискорює відповідь.\n\n🔗 Повна переписка (без реєстрації):\n%s",
-		htmlEscape(th.Organ), htmlEscape(th.Subject), deadlineStr, htmlLink(th.URL))
-	_, err := m.bot.Send(tb.ChatID(target), text, kb, tb.ModeHTML, tb.NoPreview)
+
+	var b strings.Builder
+	b.WriteString("⚠️ <b>Запити потребують уваги</b>\n\n")
+	for i, it := range items {
+		b.WriteString(fmt.Sprintf("%d. 🏛 <b>%s</b> — «%s» (строк минув %s)\n   🔗 %s\n",
+			i+1, htmlEscape(it.Thread.Organ), htmlEscape(it.Thread.Subject),
+			it.Deadline.Format("02.01.2006"), htmlLink(it.Thread.URL)))
+	}
+	b.WriteString("\nМожна дописати повідомлення у ту ж гілку запиту — нагадати органу про себе чи уточнити запит. Це часто прискорює відповідь.")
+	_, err := m.bot.Send(tb.ChatID(target), b.String(), kb, tb.ModeHTML, tb.NoPreview)
 	if err != nil {
-		log.Printf("[FOLLOWUP] reminder send user=%d: %v", target, err)
+		log.Printf("[FOLLOWUP] grouped reminder send user=%d: %v", target, err)
 	}
 }
 
