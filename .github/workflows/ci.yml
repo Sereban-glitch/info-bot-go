@@ -20,7 +20,9 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          # 1.24 — минимальная версия go.mod (зависимость ledongthuc/pdf
+          # для извлечения текста из PDF-вложений требует go >= 1.24.1)
+          go-version: '1.24'
 
       - name: Vet (статический анализ)
         run: go vet ./...

@@ -205,3 +205,19 @@ func TestBuildDraftHTMLAndKeyboard(t *testing.T) {
 		t.Errorf("без гилки должно быть 2 ряда кнопок, получено %d", len(kbNoThread.InlineKeyboard))
 	}
 }
+
+// TestStripAttachmentMarker — маркер «[Вкладення: …]» вырезается, остальной
+// текст (подпись письма) остаётся: так проверяем, есть ли в ответе суть.
+func TestStripAttachmentMarker(t *testing.T) {
+	cases := map[string]string{
+		"[Вкладення: RS.pdf]":                                    "",
+		"З повагою, ЦГЗ [Вкладення: RS.pdf, image.png.jpg]":      "З повагою, ЦГЗ",
+		"лист без вложений":                                      "лист без вложений",
+		"[Вкладення: a.pdf] и ещё текст":                         "и ещё текст",
+	}
+	for in, want := range cases {
+		if got := stripAttachmentMarker(in); got != want {
+			t.Errorf("stripAttachmentMarker(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -1,11 +1,12 @@
 module info-bot-go
 
-go 1.21
+go 1.24.1
 
 require (
 	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-message v0.18.2
 	github.com/joho/godotenv v1.5.1
+	github.com/ledongthuc/pdf v0.0.0-20260903153007-b3c860c23753
 	gopkg.in/telebot.v3 v3.3.8
 )
 
