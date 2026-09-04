@@ -221,3 +221,58 @@ func TestStripAttachmentMarker(t *testing.T) {
 		}
 	}
 }
+
+// TestPDFFileName — имя файла из HTML портала обезвреживается: без путей,
+// без переводов строк, всегда с .pdf на конце (Telegram отклоняет мусор).
+func TestPDFFileName(t *testing.T) {
+	cases := map[string]string{
+		"RS.pdf":            "RS.pdf",
+		"812.pdf":           "812.pdf",
+		"звіт 2026.pdf":     "звіт 2026.pdf",
+		"RS.pdf.p7s":        "RS.pdf.p7s.pdf",
+		"  RS.pdf  ":        "RS.pdf",
+		"":                  "attachment.pdf",
+		"   ":               "attachment.pdf",
+		"/etc/passwd.pdf":   "_etc_passwd.pdf",
+		"a/b.pdf":           "a_b.pdf",
+		"..\\..\\win.pdf":   ".._.._win.pdf",
+		"file\nname.pdf":    "file_name.pdf",
+		"документ":          "документ.pdf",
+		"Додаток №1 (2026)": "Додаток №1 (2026).pdf",
+	}
+	for in, want := range cases {
+		if got := pdfFileName(in); got != want {
+			t.Errorf("pdfFileName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestHasPDFName — кнопка «Отримати PDF» нужна только когда среди вложений
+// есть настоящий PDF; криптоподпись .p7s и картинки не считаются.
+func TestHasPDFName(t *testing.T) {
+	cases := map[string]bool{
+		"RS.pdf":                         true,
+		"812.pdf":                        true,
+		"image.png.jpg":                  false,
+		"RS.pdf.p7s":                     false,
+		"scan.PDF":                       true,
+		"  RS.pdf  ":                     true,
+		"документ.pdf":                   true,
+		"":                               false,
+		"a.pdf; RS.pdf.p7s; c.png":       false, // одна строка, не список имён
+	}
+	for in, want := range cases {
+		if got := hasPDFName([]string{in}); got != want {
+			t.Errorf("hasPDFName([%q]) = %v, want %v", in, got, want)
+		}
+	}
+	if hasPDFName([]string{"image.png.jpg", "RS.pdf.p7s"}) {
+		t.Error("hasPDFName: подпись и картинка не должны считаться PDF")
+	}
+	if hasPDFName([]string{"image.png.jpg", "RS.pdf", "RS.pdf.p7s"}) != true {
+		t.Error("hasPDFName: настоящий PDF среди вложений должен находиться")
+	}
+	if hasPDFName(nil) {
+		t.Error("hasPDFName(nil) должен быть false")
+	}
+}

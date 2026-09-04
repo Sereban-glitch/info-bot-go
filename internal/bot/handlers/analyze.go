@@ -20,6 +20,7 @@ package handlers
 // без фоновой горутины — чистка ленивая).
 
 import (
+        "bytes"
         "errors"
         "fmt"
         "io"
@@ -66,6 +67,12 @@ func (m *AnalyzeModule) Register() {
         // Кнопка на уведомлениях синхронизации: data = slug запроса портала.
         anBtn := tb.InlineButton{Unique: "an_btn"}
         m.bot.Handle(&anBtn, safeHandler("an_btn", m.handleFromNotification))
+
+        // Кнопка «⬇️ Отримати PDF» на уведомлении: присылает оригинальные
+        // PDF-вложения ответа органа без AI-розбора (бесплатно — это ответ
+        // на запрос пользователя, по ст. 23 ЗУ №2939-VI он и так его).
+        pdfBtn := tb.InlineButton{Unique: "an_pdf"}
+        m.bot.Handle(&pdfBtn, safeHandler("an_pdf", m.handleGetPDF))
 
         // «Да, разобрать» на пересланном тексте.
         fwdYes := tb.InlineButton{Unique: "an_fwd"}
@@ -419,6 +426,9 @@ func (m *AnalyzeModule) handleFromNotification(c tb.Context) error {
 
 // appendPDFAttachments скачивает PDF-вложения последнего ответа органа
 // и дописывает их текст к replyText секциями «--- ТЕКСТ ВКЛАДЕННЯ ---».
+// Каждый скачанный PDF дополнительно ПРИСЫЛАЕТСЯ ПОЛЬЗОВАТЕЛЮ файлом —
+// оригинал ответа органа должен быть в чате, даже если текст из него
+// извлечь не удастся (скан) или AI-розбір упадёт (квота/модель).
 // Возвращает: дополненный текст, число успешно прочитанных PDF и имена
 // PDF, текст из которых достать не удалось (сканы). Лимиты: 2 PDF,
 // по 10 МБ — защита AI-квоты и RAM-лимита сервиса.
@@ -453,6 +463,9 @@ func (m *AnalyzeModule) appendPDFAttachments(c tb.Context, slug, replyText strin
                         failed = append(failed, a.Name)
                         continue
                 }
+                // Оригинальный файл — сразу в чат, до всякого извлечения
+                // текста и AI: пользователь получает ответ органа как есть.
+                sendPDFDocument(c, a.Name, data)
                 text, xerr := pdftext.Extract(data, 6000)
                 if xerr != nil {
                         log.Printf("[ANALYZE] extract %s: %v", a.Name, xerr)
@@ -467,6 +480,84 @@ func (m *AnalyzeModule) appendPDFAttachments(c tb.Context, slug, replyText strin
                 _ = c.Send(fmt.Sprintf("⚠️ Не вдалося прочитати текст із %s — файл захищений або це скан.", strings.Join(failed, ", ")))
         }
         return replyText, added, failed
+}
+
+// handleGetPDF — кнопка «⬇️ Отримати PDF-вкладення» на уведомлении о
+// ответе органа: скачивает PDF с портала и присылает файлы в чат.
+// AI-розбір НЕ запускается — кредиты и лимиты не тратятся: оригинал
+// ответа по запросу пользователя принадлежит ему по закону.
+func (m *AnalyzeModule) handleGetPDF(c tb.Context) error {
+        _ = c.Respond(&tb.CallbackResponse{Text: "⏳ Завантажую PDF з порталу…"})
+        if m.deps.Dostup == nil {
+                return c.Send("❌ Канал порталу не налаштований.")
+        }
+        slug := c.Callback().Data
+        atts, err := m.deps.Dostup.GetRequestAttachments(slug)
+        if err != nil {
+                log.Printf("[ANALYZE] an_pdf GetRequestAttachments %s: %v", slug, err)
+                return c.Send("❌ Не вдалося отримати вкладення з порталу. Спробуйте пізніше або завантажте файл на сторінці переписки.")
+        }
+        pdfs := dostup.PDFAttachments(atts)
+        if len(pdfs) == 0 {
+                return c.Send("📎 У відповіді органу немає PDF-вкладень.")
+        }
+        const maxPDFs = 3
+        if len(pdfs) > maxPDFs {
+                pdfs = pdfs[:maxPDFs]
+        }
+        const maxPDFBytes = 10 << 20 // 10 МБ
+        sent, failed := 0, 0
+        for _, a := range pdfs {
+                data, derr := m.deps.Dostup.DownloadAttachment(a.HRef, maxPDFBytes)
+                if derr != nil {
+                        log.Printf("[ANALYZE] an_pdf download %s: %v", a.Name, derr)
+                        failed++
+                        continue
+                }
+                if sendPDFDocument(c, a.Name, data) {
+                        sent++
+                } else {
+                        failed++
+                }
+        }
+        log.Printf("[ANALYZE] an_pdf user=%d slug=%s sent=%d failed=%d", c.Sender().ID, slug, sent, failed)
+        if sent == 0 {
+                return c.Send("⚠️ Не вдалося завантажити PDF з порталу. Спробуйте пізніше або завантажте файл на сторінці переписки.")
+        }
+        return nil
+}
+
+// sendPDFDocument присылает PDF-файл в чат как документ Telegram.
+// Возвращает true при успехе; ошибки логируются, не падают на вызывающем.
+func sendPDFDocument(c tb.Context, name string, data []byte) bool {
+        doc := &tb.Document{
+                File:     tb.FromReader(bytes.NewReader(data)),
+                FileName: pdfFileName(name),
+                MIME:     "application/pdf",
+                Caption:  "📎 <b>Оригінальний PDF з відповіді органу</b>\n<i>файл без змін — як надіслав розпорядник</i>",
+        }
+        if err := c.Send(doc, tb.ModeHTML); err != nil {
+                log.Printf("[ANALYZE] send PDF %s (%d байт): %v", name, len(data), err)
+                return false
+        }
+        return true
+}
+
+// pdfFileName — безопасное имя файла для Telegram: без путей, без пустоты.
+// Имена приходят из HTML портала — им доверять нельзя.
+func pdfFileName(name string) string {
+        name = strings.TrimSpace(name)
+        name = strings.ReplaceAll(name, "/", "_")
+        name = strings.ReplaceAll(name, "\\", "_")
+        name = strings.ReplaceAll(name, "\n", "_")
+        name = strings.ReplaceAll(name, "\r", "_")
+        if name == "" {
+                return "attachment.pdf"
+        }
+        if !strings.HasSuffix(strings.ToLower(name), ".pdf") {
+                name += ".pdf"
+        }
+        return name
 }
 
 // stripAttachmentMarker убирает подставленный маркер вложений —

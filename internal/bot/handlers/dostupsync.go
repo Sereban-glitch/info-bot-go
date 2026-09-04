@@ -428,7 +428,7 @@ func (w *DostupSync) notifyResponse(e sentlog.SentEntry, st *dostup.RequestStatu
                 w.deps.FollowUps.MarkReplied(e.UserID, strings.TrimPrefix(e.MessageID, "dostup:"), time.Now().Format(time.RFC3339))
         }
 
-        w.sendNotifyWithAnalyze(e.UserID, text, strings.TrimPrefix(e.MessageID, "dostup:"))
+        w.sendNotifyWithAnalyze(e.UserID, text, strings.TrimPrefix(e.MessageID, "dostup:"), hasPDFName(st.Attachments))
 }
 
 // notifyAcknowledgement сообщает о промежуточном авто-подтверждении:
@@ -490,7 +490,7 @@ func (w *DostupSync) notifyStatusChange(e sentlog.SentEntry, st *dostup.RequestS
                 htmlEscape(organ), htmlEscape(e.Subject), dostup.StatusLabel(st.Status), htmlLink(e.URL))
 
         // ТЗ №6: отказ/уточнение/ошибка — прямая дорога к AI-разбору.
-        w.sendNotifyWithAnalyze(e.UserID, text, strings.TrimPrefix(e.MessageID, "dostup:"))
+        w.sendNotifyWithAnalyze(e.UserID, text, strings.TrimPrefix(e.MessageID, "dostup:"), hasPDFName(st.Attachments))
 }
 
 // sendNotify доставляет сообщение в чат пользователя (HTML-режим).
@@ -508,9 +508,11 @@ func (w *DostupSync) sendNotify(userID int64, text string) {
         }
 }
 
-// sendNotifyWithAnalyze — уведомление с кнопкой «⚖️ Розібрати відповідь (AI)»
-// (ТЗ №6): data = slug запроса, обработчик подтягивает контекст из гилки.
-func (w *DostupSync) sendNotifyWithAnalyze(userID int64, text, slug string) {
+// sendNotifyWithAnalyze — уведомление с кнопкой «⚖️ Розібрати відповідь
+// (AI)» (ТЗ №6): data = slug запроса, обработчик подтягивает контекст из
+// гилки. withPDF — добавить кнопку «⬇️ Отримати PDF-вкладення»: оригинал
+// файла можно забрать и без AI-розбора (ответ по запросу — пользователя).
+func (w *DostupSync) sendNotifyWithAnalyze(userID int64, text, slug string, withPDF bool) {
         target := userID
         if target == 0 {
                 target = w.deps.Cfg.AdminID
@@ -525,9 +527,15 @@ func (w *DostupSync) sendNotifyWithAnalyze(userID int64, text, slug string) {
                 return
         }
         kb := &tb.ReplyMarkup{}
-        kb.InlineKeyboard = [][]tb.InlineButton{
+        rows := [][]tb.InlineButton{
                 {{Unique: "an_btn", Text: "⚖️ Розібрати відповідь (AI)", Data: slug}},
         }
+        if withPDF {
+                rows = append(rows, []tb.InlineButton{
+                        {Unique: "an_pdf", Text: "⬇️ Отримати PDF-вкладення", Data: slug},
+                })
+        }
+        kb.InlineKeyboard = rows
         _, err := w.bot.Send(tb.ChatID(target), text, kb, tb.ModeHTML, tb.NoPreview)
         if err != nil {
                 log.Printf("[DOSTUP-SYNC] уведомление user=%d: %v", target, err)
@@ -598,4 +606,17 @@ func replyDeadline(dateISO string) time.Time {
                 return time.Time{}
         }
         return addWorkingDays(t, 5)
+}
+
+// hasPDFName — есть ли среди имён файлов вложений настоящий PDF
+// (криптоподпись .pdf.p7s не считается). Имена приходят со статус-страницы
+// портала — этого достаточно, чтобы решить, показывать ли кнопку скачивания.
+func hasPDFName(names []string) bool {
+        for _, n := range names {
+                n = strings.ToLower(strings.TrimSpace(n))
+                if strings.HasSuffix(n, ".pdf") && !strings.HasSuffix(n, ".p7s") {
+                        return true
+                }
+        }
+        return false
 }
