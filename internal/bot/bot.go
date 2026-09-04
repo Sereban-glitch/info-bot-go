@@ -1,231 +1,236 @@
 package bot
 
 import (
-	"fmt"
-	"log"
-	"os"
-	"path/filepath"
-	"strings"
-	"time"
-	"unicode/utf8"
+        "fmt"
+        "log"
+        "os"
+        "path/filepath"
+        "strings"
+        "time"
+        "unicode/utf8"
 
-	"info-bot-go/internal/ai"
-	"info-bot-go/internal/bot/handlers"
-	"info-bot-go/internal/config"
-	"info-bot-go/internal/directory"
-	"info-bot-go/internal/dostup"
-	"info-bot-go/internal/email"
-	"info-bot-go/internal/imap"
-	"info-bot-go/internal/osint"
-	"info-bot-go/internal/ratelimiter"
-	"info-bot-go/internal/safego"
-	"info-bot-go/internal/sentlog"
-	"info-bot-go/internal/session"
-	"info-bot-go/internal/stars"
-	"info-bot-go/internal/stats"
+        "info-bot-go/internal/ai"
+        "info-bot-go/internal/alert"
+        "info-bot-go/internal/bot/handlers"
+        "info-bot-go/internal/config"
+        "info-bot-go/internal/directory"
+        "info-bot-go/internal/dostup"
+        "info-bot-go/internal/email"
+        "info-bot-go/internal/imap"
+        "info-bot-go/internal/osint"
+        "info-bot-go/internal/ratelimiter"
+        "info-bot-go/internal/safego"
+        "info-bot-go/internal/sentlog"
+        "info-bot-go/internal/session"
+        "info-bot-go/internal/stars"
+        "info-bot-go/internal/stats"
 
-	tb "gopkg.in/telebot.v3"
+        tb "gopkg.in/telebot.v3"
 )
 
 // Bot wraps the telebot instance and dependencies.
 type Bot struct {
-	bot           *tb.Bot
-	cfg           *config.Config
-	sessions      *session.FileStore
-	sentLog       *sentlog.SentLog
-	watcher       *imap.Watcher
-	gemini        *ai.Rotator
-	stats         *stats.Stats
-	sessDir       string
-	stars         *stars.Store
-	rateLim       *ratelimiter.RateLimiter
-	sync          *handlers.DostupSync
-	dostup        *dostup.Client       // канал «Доступ до правды»
-	dostupCatalog *dostup.CatalogStore // локальный каталог органов
-	dostupRatings *dostup.RatingsStore // рейтинги органов портала
+        bot           *tb.Bot
+        cfg           *config.Config
+        sessions      *session.FileStore
+        sentLog       *sentlog.SentLog
+        watcher       *imap.Watcher
+        gemini        *ai.Rotator
+        stats         *stats.Stats
+        sessDir       string
+        stars         *stars.Store
+        rateLim       *ratelimiter.RateLimiter
+        sync          *handlers.DostupSync
+        dostup        *dostup.Client       // канал «Доступ до правды»
+        dostupCatalog *dostup.CatalogStore // локальный каталог органов
+        dostupRatings *dostup.RatingsStore // рейтинги органов портала
 }
 
 // New creates a new Bot with all dependencies.
 func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.SentLog, globalStats *stats.Stats, watcher *imap.Watcher) (*Bot, error) {
-	pref := tb.Settings{
-		Token:  cfg.BotToken,
-		Poller: &tb.LongPoller{Timeout: 10 * time.Second},
-		OnError: func(err error, c tb.Context) {
-			log.Printf("[BOT ERROR] %v", err)
-		},
-	}
+        pref := tb.Settings{
+                Token:  cfg.BotToken,
+                Poller: &tb.LongPoller{Timeout: 10 * time.Second},
+                OnError: func(err error, c tb.Context) {
+                        log.Printf("[BOT ERROR] %v", err)
+                },
+        }
 
-	b, err := tb.NewBot(pref)
-	if err != nil {
-		return nil, fmt.Errorf("create bot: %w", err)
-	}
+        b, err := tb.NewBot(pref)
+        if err != nil {
+                return nil, fmt.Errorf("create bot: %w", err)
+        }
 
-	var rotator *ai.Rotator
-	if cfg.GeminiAvailable() {
-		rotator = ai.NewRotator(cfg.GeminiAPIKeys, cfg.GeminiModel, cfg.GeminiFallbackModel)
-		// AI-прокси: маршрутизация запросов через роутер (например
-		// antigravity-claude-proxy); при сбое — автоматический
-		// возврат к прямому доступу к Gemini API.
-		if cfg.AIProxyURL != "" {
-			rotator.SetProxy(ai.ProxyConfig{
-				URL:           cfg.AIProxyURL,
-				Key:           cfg.AIProxyKey,
-				Model:         cfg.AIProxyModel,
-				FallbackModel: cfg.AIProxyFallbackModel,
-				MediaModel:    cfg.AIProxyMediaModel,
-			})
-		}
-	}
+        var rotator *ai.Rotator
+        if cfg.GeminiAvailable() {
+                rotator = ai.NewRotator(cfg.GeminiAPIKeys, cfg.GeminiModel, cfg.GeminiFallbackModel)
+                // AI-прокси: маршрутизация запросов через роутер (например
+                // antigravity-claude-proxy); при сбое — автоматический
+                // возврат к прямому доступу к Gemini API.
+                if cfg.AIProxyURL != "" {
+                        rotator.SetProxy(ai.ProxyConfig{
+                                URL:           cfg.AIProxyURL,
+                                Key:           cfg.AIProxyKey,
+                                Model:         cfg.AIProxyModel,
+                                FallbackModel: cfg.AIProxyFallbackModel,
+                                MediaModel:    cfg.AIProxyMediaModel,
+                        })
+                }
+        }
 
-	var finder *osint.Finder
-	if len(cfg.GeminiAPIKeys) > 0 {
-		finder = osint.NewFinder(cfg.GeminiAPIKeys)
-	}
+        var finder *osint.Finder
+        if len(cfg.GeminiAPIKeys) > 0 {
+                finder = osint.NewFinder(cfg.GeminiAPIKeys)
+        }
 
-	// Rate limiter: 3 requests per hour per user
-	rl := ratelimiter.New(3, 1*time.Hour)
+        // Rate limiter: 3 requests per hour per user
+        rl := ratelimiter.New(3, 1*time.Hour)
 
-	botInst := &Bot{
-		bot:      b,
-		cfg:      cfg,
-		sessions: sessStore,
-		sentLog:  sentLog,
-		watcher:  watcher,
-		gemini:   rotator,
-		stats:    globalStats,
-		sessDir:  cfg.SessionDir,
-		rateLim:  rl,
-	}
+        botInst := &Bot{
+                bot:      b,
+                cfg:      cfg,
+                sessions: sessStore,
+                sentLog:  sentLog,
+                watcher:  watcher,
+                gemini:   rotator,
+                stats:    globalStats,
+                sessDir:  cfg.SessionDir,
+                rateLim:  rl,
+        }
 
-	// Аналитика для Арчи-монитора: каждое действие пользователя
-	// (команда, кнопка, голос, фото) оставляет строку [BTN] в журнале.
-	// Содержимое текста НЕ пишется (приватность) — только тип действия.
-	b.Use(botInst.auditMiddleware())
+        // Алерты владельцу в реальном времени: ошибка у реального
+        // пользователя → сообщение владельцу сразу, не в утреннем докладе.
+        alert.SetBot(b, cfg.AdminID)
 
-	b.Use(botInst.sessionMiddleware())
+        // Аналитика для Арчи-монитора: каждое действие пользователя
+        // (команда, кнопка, голос, фото) оставляет строку [BTN] в журнале.
+        // Содержимое текста НЕ пишется (приватность) — только тип действия.
+        b.Use(botInst.auditMiddleware())
 
-	// Монетизация Stars (каркас): хранилище кредитов всегда создаётся,
-	// но списания идут только при STARS_ENABLED=true.
-	starsStore := stars.NewStore(cfg.StarsStoreFile)
-	botInst.stars = starsStore
+        b.Use(botInst.sessionMiddleware())
 
-	deps := &handlers.Deps{
-		Cfg:       cfg,
-		Sessions:  sessStore,
-		SentLog:   sentLog,
-		Gemini:    rotator,
-		Watcher:   watcher,
-		Bot:       b,
-		Directory: directory.All(),
-		Email:     email.NewSender(cfg),
-		Stats:     globalStats,
-		RateLimit: rl,
-		OSINT:     finder,
-		Stars:     starsStore,
-	}
+        // Монетизация Stars (каркас): хранилище кредитов всегда создаётся,
+        // но списания идут только при STARS_ENABLED=true.
+        starsStore := stars.NewStore(cfg.StarsStoreFile)
+        botInst.stars = starsStore
 
-	// Канал «Доступ до правди» (dostup.org.ua): включается переменными
-	// DOSTUP_EMAIL + DOSTUP_PASSWORD в .env; без них бот работает как раньше.
-	if cfg.DostupEmail != "" && cfg.DostupPassword != "" {
-		dc := dostup.New(cfg.DostupSessionFile)
-		dc.SetCredentials(cfg.DostupEmail, cfg.DostupPassword)
-		deps.Dostup = dc
-		log.Printf("[INFO] dostup.org.ua channel enabled (session file: %s)", cfg.DostupSessionFile)
-		// Каталог розпорядників порталу (локальный кэш + bindings)
-		catalogPath := filepath.Join(cfg.DostupSessionFileDir(), "dostup_catalog.json")
-		deps.DostupCatalog = dostup.NewCatalogStore(catalogPath)
-		deps.DostupCatalog.Load()
-		botInst.dostup = dc
-		botInst.dostupCatalog = deps.DostupCatalog
-		// Персистентні рейтинги органів (індекс відкритості + лідерборд)
-		ratingsStore := dostup.NewRatingsStore(filepath.Join(cfg.DostupSessionFileDir(), "dostup_ratings.json"))
-		ratingsStore.Load()
-		dc.SetRatingsStore(ratingsStore)
-		deps.DostupRatings = ratingsStore
-		botInst.dostupRatings = ratingsStore
-		// Гилки запросов для уточнений (followup)
-		deps.FollowUps = session.NewFollowUpThreads(filepath.Join(sessDir(), "followup_threads.json"))
-		// Попытки отправки без подтверждения: синхронизация ищет автора
-		// «чужого» запроса среди них, прежде чем приписывать владельцу
-		deps.PendingSubmits = handlers.NewPendingSubmits(filepath.Join(sessDir(), "pending_submits.json"))
-		// Фоновая синхронизация бот ↔ портал
-		syncWorker := handlers.NewDostupSync(deps)
-		deps.DostupSync = syncWorker
-		botInst.sync = syncWorker
-		syncWorker.Start()
-	}
+        deps := &handlers.Deps{
+                Cfg:       cfg,
+                Sessions:  sessStore,
+                SentLog:   sentLog,
+                Gemini:    rotator,
+                Watcher:   watcher,
+                Bot:       b,
+                Directory: directory.All(),
+                Email:     email.NewSender(cfg),
+                Stats:     globalStats,
+                RateLimit: rl,
+                OSINT:     finder,
+                Stars:     starsStore,
+        }
 
-	modules := handlers.AllModules(deps)
-	for _, m := range modules {
-		if err := safeRegister(m); err != nil {
-			log.Printf("[WARN] module %q failed to register: %v", m.Name(), err)
-		} else {
-			log.Printf("[INFO] module %q registered", m.Name())
-		}
-	}
+        // Канал «Доступ до правди» (dostup.org.ua): включается переменными
+        // DOSTUP_EMAIL + DOSTUP_PASSWORD в .env; без них бот работает как раньше.
+        if cfg.DostupEmail != "" && cfg.DostupPassword != "" {
+                dc := dostup.New(cfg.DostupSessionFile)
+                dc.SetCredentials(cfg.DostupEmail, cfg.DostupPassword)
+                deps.Dostup = dc
+                log.Printf("[INFO] dostup.org.ua channel enabled (session file: %s)", cfg.DostupSessionFile)
+                // Каталог розпорядників порталу (локальный кэш + bindings)
+                catalogPath := filepath.Join(cfg.DostupSessionFileDir(), "dostup_catalog.json")
+                deps.DostupCatalog = dostup.NewCatalogStore(catalogPath)
+                deps.DostupCatalog.Load()
+                botInst.dostup = dc
+                botInst.dostupCatalog = deps.DostupCatalog
+                // Персистентні рейтинги органів (індекс відкритості + лідерборд)
+                ratingsStore := dostup.NewRatingsStore(filepath.Join(cfg.DostupSessionFileDir(), "dostup_ratings.json"))
+                ratingsStore.Load()
+                dc.SetRatingsStore(ratingsStore)
+                deps.DostupRatings = ratingsStore
+                botInst.dostupRatings = ratingsStore
+                // Гилки запросов для уточнений (followup)
+                deps.FollowUps = session.NewFollowUpThreads(filepath.Join(sessDir(), "followup_threads.json"))
+                // Попытки отправки без подтверждения: синхронизация ищет автора
+                // «чужого» запроса среди них, прежде чем приписывать владельцу
+                deps.PendingSubmits = handlers.NewPendingSubmits(filepath.Join(sessDir(), "pending_submits.json"))
+                // Фоновая синхронизация бот ↔ портал
+                syncWorker := handlers.NewDostupSync(deps)
+                deps.DostupSync = syncWorker
+                botInst.sync = syncWorker
+                syncWorker.Start()
+        }
 
-	// Find the search module for idle text routing
-	var searchMod *handlers.SearchModule
-	for _, m := range modules {
-		if sm, ok := m.(*handlers.SearchModule); ok {
-			searchMod = sm
-			break
-		}
-	}
+        modules := handlers.AllModules(deps)
+        for _, m := range modules {
+                if err := safeRegister(m); err != nil {
+                        log.Printf("[WARN] module %q failed to register: %v", m.Name(), err)
+                } else {
+                        log.Printf("[INFO] module %q registered", m.Name())
+                }
+        }
 
-	// ТЗ №6: модуль розбора — пересланный в покое длинный текст
-	// (вероятный ответ органа) уводим на AI-разбор вместо поиска органа.
-	var analyzeMod *handlers.AnalyzeModule
-	for _, m := range modules {
-		if am, ok := m.(*handlers.AnalyzeModule); ok {
-			analyzeMod = am
-			break
-		}
-	}
+        // Find the search module for idle text routing
+        var searchMod *handlers.SearchModule
+        for _, m := range modules {
+                if sm, ok := m.(*handlers.SearchModule); ok {
+                        searchMod = sm
+                        break
+                }
+        }
 
-	// Подключаем модуль уточнений к sync-воркеру (напоминания о просрочках)
-	if deps.DostupSync != nil {
-		for _, m := range modules {
-			if fu, ok := m.(*handlers.FollowUpModule); ok {
-				deps.DostupSync.SetFollowUpModule(fu)
-				break
-			}
-		}
-	}
+        // ТЗ №6: модуль розбора — пересланный в покое длинный текст
+        // (вероятный ответ органа) уводим на AI-разбор вместо поиска органа.
+        var analyzeMod *handlers.AnalyzeModule
+        for _, m := range modules {
+                if am, ok := m.(*handlers.AnalyzeModule); ok {
+                        analyzeMod = am
+                        break
+                }
+        }
 
-	// ТЗ №8 (E3): еженедельный дайджест владельцу — фоновый цикл
-	// (понедельник 09:00 по Киеву; /digest доступен всегда).
-	for _, m := range modules {
-		if dm, ok := m.(*handlers.DigestModule); ok {
-			dm.Start()
-			break
-		}
-	}
+        // Подключаем модуль уточнений к sync-воркеру (напоминания о просрочках)
+        if deps.DostupSync != nil {
+                for _, m := range modules {
+                        if fu, ok := m.(*handlers.FollowUpModule); ok {
+                                deps.DostupSync.SetFollowUpModule(fu)
+                                break
+                        }
+                }
+        }
 
-	// ТЗ №10: антиспровокаційний скринінг — нагадування власнику про
-	// незрішені запити після рестарту (черга живе у файлі).
-	for _, m := range modules {
-		if mm, ok := m.(*handlers.ModerationModule); ok {
-			mm.Start()
-			break
-		}
-	}
+        // ТЗ №8 (E3): еженедельный дайджест владельцу — фоновый цикл
+        // (понедельник 09:00 по Киеву; /digest доступен всегда).
+        for _, m := range modules {
+                if dm, ok := m.(*handlers.DigestModule); ok {
+                        dm.Start()
+                        break
+                }
+        }
 
-	// Universal text dispatcher.
-	// ВАЖНО: передаём ЗАРЕГИСТРИРОВАННЫЕ экземпляры модулей, а не создаём
-	// новые через AllModules(deps) — иначе Register() не вызывается и
-	// состояние, установленное при регистрации (например, skipBtn в
-	// ProfileModule), остаётся nil → panic в askNextField (падал весь
-	// процесс, когда пользователь вводил имя в флоу профиля).
-	b.Handle(tb.OnText, func(c tb.Context) error {
-		text := strings.TrimSpace(c.Text())
-		if strings.HasPrefix(text, "/") {
-			return nil
-		}
-		return dispatchText(deps, c, searchMod, analyzeMod, modules)
-	})
+        // ТЗ №10: антиспровокаційний скринінг — нагадування власнику про
+        // незрішені запити після рестарту (черга живе у файлі).
+        for _, m := range modules {
+                if mm, ok := m.(*handlers.ModerationModule); ok {
+                        mm.Start()
+                        break
+                }
+        }
 
-	return botInst, nil
+        // Universal text dispatcher.
+        // ВАЖНО: передаём ЗАРЕГИСТРИРОВАННЫЕ экземпляры модулей, а не создаём
+        // новые через AllModules(deps) — иначе Register() не вызывается и
+        // состояние, установленное при регистрации (например, skipBtn в
+        // ProfileModule), остаётся nil → panic в askNextField (падал весь
+        // процесс, когда пользователь вводил имя в флоу профиля).
+        b.Handle(tb.OnText, func(c tb.Context) error {
+                text := strings.TrimSpace(c.Text())
+                if strings.HasPrefix(text, "/") {
+                        return nil
+                }
+                return dispatchText(deps, c, searchMod, analyzeMod, modules)
+        })
+
+        return botInst, nil
 }
 
 func (b *Bot) Telebot() *tb.Bot     { return b.bot }
@@ -246,169 +251,169 @@ func (b *Bot) DostupRatings() *dostup.RatingsStore { return b.dostupRatings }
 
 // sessDir — каталог сессий (для рабочих файлов).
 func sessDir() string {
-	if dir := os.Getenv("SESSION_DIR"); dir != "" {
-		return dir
-	}
-	return ".sessions_go"
+        if dir := os.Getenv("SESSION_DIR"); dir != "" {
+                return dir
+        }
+        return ".sessions_go"
 }
 
 func (b *Bot) Stop() {
-	if b.sync != nil {
-		b.sync.Stop()
-	}
-	if b.rateLim != nil {
-		b.rateLim.Stop()
-	}
-	b.bot.Stop()
+        if b.sync != nil {
+                b.sync.Stop()
+        }
+        if b.rateLim != nil {
+                b.rateLim.Stop()
+        }
+        b.bot.Stop()
 }
 
 // auditMiddleware — «кнопочный счётчик» для Арчи-монитора.
 // Одно короткое событие [BTN] на каждое действие пользователя:
 //
-//	[BTN] user=123 act=cmd:/start
-//	[BTN] user=123 act=btn:donate          (инлайн-кнопка, идентификатор)
-//	[BTN] user=123 act=menu:📚 Шаблони     (кнопка меню внизу чата)
-//	[BTN] user=123 act=msg:text            (текст сообщения — БЕЗ содержимого)
-//	[BTN] user=123 act=msg:voice|photo|document
+//      [BTN] user=123 act=cmd:/start
+//      [BTN] user=123 act=btn:donate          (инлайн-кнопка, идентификатор)
+//      [BTN] user=123 act=menu:📚 Шаблони     (кнопка меню внизу чата)
+//      [BTN] user=123 act=msg:text            (текст сообщения — БЕЗ содержимого)
+//      [BTN] user=123 act=msg:voice|photo|document
 //
 // Приватность: текст сообщений и голос не логируются никогда — только факт.
 // Идентификаторы инлайн-кнопок и подписи кнопок меню — не персональные данные.
 func (b *Bot) auditMiddleware() tb.MiddlewareFunc {
-	return func(next tb.HandlerFunc) tb.HandlerFunc {
-		return func(c tb.Context) error {
-			if c.Sender() != nil {
-				if act := auditAction(c.Update()); act != "" {
-					log.Printf("[BTN] user=%d act=%s", c.Sender().ID, act)
-				}
-			}
-			return next(c)
-		}
-	}
+        return func(next tb.HandlerFunc) tb.HandlerFunc {
+                return func(c tb.Context) error {
+                        if c.Sender() != nil {
+                                if act := auditAction(c.Update()); act != "" {
+                                        log.Printf("[BTN] user=%d act=%s", c.Sender().ID, act)
+                                }
+                        }
+                        return next(c)
+                }
+        }
 }
 
 // auditAction — чистая классификация апдейта в короткое действие для [BTN]-журнала.
 // Пустая строка = не логировать (служебные апдейты без действия пользователя).
 func auditAction(u tb.Update) string {
-	switch {
-	case u.Callback != nil:
-		// Инлайн-кнопка: Unique-идентификатор без payload (payload может
-		// содержать slug органа — не нужен для статистики).
-		data := u.Callback.Data
-		if i := strings.IndexByte(data, '|'); i > 0 {
-			data = data[:i]
-		}
-		data = strings.TrimSpace(strings.TrimPrefix(data, "\f"))
-		if len(data) > 40 {
-			data = data[:40]
-		}
-		return "btn:" + data
-	case u.Message != nil && u.Message.Voice != nil:
-		return "msg:voice"
-	case u.Message != nil && u.Message.Photo != nil:
-		return "msg:photo"
-	case u.Message != nil && u.Message.Document != nil:
-		return "msg:document"
-	case u.Message != nil && u.Message.Text != "":
-		text := strings.TrimSpace(u.Message.Text)
-		if strings.HasPrefix(text, "/") {
-			// команда: отрезать аргументы (/find івано — /find)
-			cmd := strings.Fields(text)[0]
-			return "cmd:" + strings.SplitN(cmd, "@", 2)[0]
-		}
-		// известная кнопка меню — пишем подпись; произвольный текст —
-		// только факт, содержимое НЕ логируем
-		if menuLabels[text] {
-			return "menu:" + text
-		}
-		return "msg:text"
-	}
-	return ""
+        switch {
+        case u.Callback != nil:
+                // Инлайн-кнопка: Unique-идентификатор без payload (payload может
+                // содержать slug органа — не нужен для статистики).
+                data := u.Callback.Data
+                if i := strings.IndexByte(data, '|'); i > 0 {
+                        data = data[:i]
+                }
+                data = strings.TrimSpace(strings.TrimPrefix(data, "\f"))
+                if len(data) > 40 {
+                        data = data[:40]
+                }
+                return "btn:" + data
+        case u.Message != nil && u.Message.Voice != nil:
+                return "msg:voice"
+        case u.Message != nil && u.Message.Photo != nil:
+                return "msg:photo"
+        case u.Message != nil && u.Message.Document != nil:
+                return "msg:document"
+        case u.Message != nil && u.Message.Text != "":
+                text := strings.TrimSpace(u.Message.Text)
+                if strings.HasPrefix(text, "/") {
+                        // команда: отрезать аргументы (/find івано — /find)
+                        cmd := strings.Fields(text)[0]
+                        return "cmd:" + strings.SplitN(cmd, "@", 2)[0]
+                }
+                // известная кнопка меню — пишем подпись; произвольный текст —
+                // только факт, содержимое НЕ логируем
+                if menuLabels[text] {
+                        return "menu:" + text
+                }
+                return "msg:text"
+        }
+        return ""
 }
 
 // menuLabels — точный список кнопок меню (reply keyboard). Всё, что не команда
 // и не кнопка из этого списка — произвольный текст, содержимое НЕ логируем.
 var menuLabels = map[string]bool{
-	"ℹ️ Довідка": true, "⏰ Терміни": true, "🌟 Підтримати проект": true,
-	"🐞 Повідомити про помилку": true, "👤 Мій профіль": true,
-	"💳 Купити розбори": true, "💾 Бекап проєкту": true, "📊 Статистика": true,
-	"📚 Шаблони": true, "📝 Новий запит": true, "📞 Гарячі лінії": true,
-	"📨 Мої запити": true, "🔍 Розбір відповіді": true,
+        "ℹ️ Довідка": true, "⏰ Терміни": true, "🌟 Підтримати проект": true,
+        "🐞 Повідомити про помилку": true, "👤 Мій профіль": true,
+        "💳 Купити розбори": true, "💾 Бекап проєкту": true, "📊 Статистика": true,
+        "📚 Шаблони": true, "📝 Новий запит": true, "📞 Гарячі лінії": true,
+        "📨 Мої запити": true, "🔍 Розбір відповіді": true,
 }
 
 func (b *Bot) sessionMiddleware() tb.MiddlewareFunc {
-	return func(next tb.HandlerFunc) tb.HandlerFunc {
-		return func(c tb.Context) error {
-			if c.Sender() == nil {
-				return next(c)
-			}
-			key := session.SessionKey(c.Sender().ID)
+        return func(next tb.HandlerFunc) tb.HandlerFunc {
+                return func(c tb.Context) error {
+                        if c.Sender() == nil {
+                                return next(c)
+                        }
+                        key := session.SessionKey(c.Sender().ID)
 
-			// ТЗ №5 — целостность при одновременной работе: вся обработка
-			// сообщений одного пользователя идёт под персональной
-			// блокировкой. Сообщения из двух устройств (или работа бота и
-			// мини-приложения одновременно) больше не «топчут» сессию друг
-			// друга и не дают гонок на общих данных.
-			b.sessions.LockSession(key)
-			defer b.sessions.UnlockSession(key)
+                        // ТЗ №5 — целостность при одновременной работе: вся обработка
+                        // сообщений одного пользователя идёт под персональной
+                        // блокировкой. Сообщения из двух устройств (или работа бота и
+                        // мини-приложения одновременно) больше не «топчут» сессию друг
+                        // друга и не дают гонок на общих данных.
+                        b.sessions.LockSession(key)
+                        defer b.sessions.UnlockSession(key)
 
-			isNewUser := false
-			sessionPath := filepath.Join(b.sessDir, key+".json")
-			if _, err := os.Stat(sessionPath); os.IsNotExist(err) {
-				isNewUser = true
-			}
+                        isNewUser := false
+                        sessionPath := filepath.Join(b.sessDir, key+".json")
+                        if _, err := os.Stat(sessionPath); os.IsNotExist(err) {
+                                isNewUser = true
+                        }
 
-			sess, err := b.sessions.Get(key)
-			if err != nil {
-				sess = session.NewSessionData()
-			}
+                        sess, err := b.sessions.Get(key)
+                        if err != nil {
+                                sess = session.NewSessionData()
+                        }
 
-			c.Set("session", sess)
-			c.Set("sessionKey", key)
+                        c.Set("session", sess)
+                        c.Set("sessionKey", key)
 
-			// ТЗ №8 (E2): фиксируем время ПРЕДЫДУЩЕГО визита до обновления —
-			// по нему /start решает, показать ли вернувшемуся «Що нового».
-			c.Set("prevSeen", sess.LastSeenAt)
-			sess.LastSeenAt = time.Now()
+                        // ТЗ №8 (E2): фиксируем время ПРЕДЫДУЩЕГО визита до обновления —
+                        // по нему /start решает, показать ли вернувшемуся «Що нового».
+                        c.Set("prevSeen", sess.LastSeenAt)
+                        sess.LastSeenAt = time.Now()
 
-			err = next(c)
+                        err = next(c)
 
-			_ = b.sessions.Set(key, sess)
+                        _ = b.sessions.Set(key, sess)
 
-			if isNewUser && b.stats != nil {
-				b.stats.IncrementUsers()
-			}
+                        if isNewUser && b.stats != nil {
+                                b.stats.IncrementUsers()
+                        }
 
-			// Уведомление владельцу о новом пользователе: раньше владелец
-			// не видел, приходят ли люди после приглашений (приходилось
-			// вручную смотреть файлы). Теперь бот сам сообщает о каждом
-			// новом лице — с именем, @username и счётчиком всех юзеров.
-			if isNewUser {
-				chatType := ""
-				if c.Chat() != nil {
-					chatType = string(c.Chat().Type)
-				}
-				total := 0
-				if b.stats != nil {
-					total = b.stats.Get().TotalUsers
-				}
-				sender := *c.Sender()
-				adminID := b.cfg.AdminID
-				botSend := b.bot
-				safego.Go("newuser-notify", func() {
-					if !shouldNotifyNewUser(sender.ID, adminID, chatType) {
-						return
-					}
-					if _, err := botSend.Send(tb.ChatID(adminID), newUserNotifyText(sender, total)); err != nil {
-						log.Printf("[NEWUSER] не удалось уведомить владельца о пользователе %d: %v", sender.ID, err)
-					} else {
-						log.Printf("[NEWUSER] новый пользователь %d — владелец уведомлён", sender.ID)
-					}
-				})
-			}
+                        // Уведомление владельцу о новом пользователе: раньше владелец
+                        // не видел, приходят ли люди после приглашений (приходилось
+                        // вручную смотреть файлы). Теперь бот сам сообщает о каждом
+                        // новом лице — с именем, @username и счётчиком всех юзеров.
+                        if isNewUser {
+                                chatType := ""
+                                if c.Chat() != nil {
+                                        chatType = string(c.Chat().Type)
+                                }
+                                total := 0
+                                if b.stats != nil {
+                                        total = b.stats.Get().TotalUsers
+                                }
+                                sender := *c.Sender()
+                                adminID := b.cfg.AdminID
+                                botSend := b.bot
+                                safego.Go("newuser-notify", func() {
+                                        if !shouldNotifyNewUser(sender.ID, adminID, chatType) {
+                                                return
+                                        }
+                                        if _, err := botSend.Send(tb.ChatID(adminID), newUserNotifyText(sender, total)); err != nil {
+                                                log.Printf("[NEWUSER] не удалось уведомить владельца о пользователе %d: %v", sender.ID, err)
+                                        } else {
+                                                log.Printf("[NEWUSER] новый пользователь %d — владелец уведомлён", sender.ID)
+                                        }
+                                })
+                        }
 
-			return err
-		}
-	}
+                        return err
+                }
+        }
 }
 
 // shouldNotifyNewUser решает, нужно ли уведомлять владельца о новом
@@ -416,101 +421,102 @@ func (b *Bot) sessionMiddleware() tb.MiddlewareFunc {
 // и сообщения в группах (там «новым лицом» может оказаться любой
 // участник группы, который вообще не начинал работать с ботом).
 func shouldNotifyNewUser(senderID, adminID int64, chatType string) bool {
-	if adminID == 0 || senderID == 0 || senderID == adminID {
-		return false
-	}
-	return chatType == "" || chatType == string(tb.ChatPrivate)
+        if adminID == 0 || senderID == 0 || senderID == adminID {
+                return false
+        }
+        return chatType == "" || chatType == string(tb.ChatPrivate)
 }
 
 // newUserNotifyText — текст уведомления владельцу о новом пользователе.
 // Чистая функция — покрыта юнит-тестами.
 func newUserNotifyText(s tb.User, totalUsers int) string {
-	name := strings.TrimSpace(strings.TrimSpace(s.FirstName) + " " + strings.TrimSpace(s.LastName))
-	if name == "" {
-		name = "без імені"
-	}
-	username := "немає"
-	if s.Username != "" {
-		username = "@" + s.Username
-	}
-	total := ""
-	if totalUsers > 0 {
-		total = fmt.Sprintf("\n👥 Всього користувачів: %d", totalUsers)
-	}
-	return fmt.Sprintf("🎉 У «Прозоро» новий користувач!\n\n"+
-		"👤 Ім'я: %s\n"+
-		"🔗 Telegram: %s\n"+
-		"🆔 ID: %d%s\n\n"+
-		"Людей стає більше — так тримати! 🚀",
-		name, username, s.ID, total)
+        name := strings.TrimSpace(strings.TrimSpace(s.FirstName) + " " + strings.TrimSpace(s.LastName))
+        if name == "" {
+                name = "без імені"
+        }
+        username := "немає"
+        if s.Username != "" {
+                username = "@" + s.Username
+        }
+        total := ""
+        if totalUsers > 0 {
+                total = fmt.Sprintf("\n👥 Всього користувачів: %d", totalUsers)
+        }
+        return fmt.Sprintf("🎉 У «Прозоро» новий користувач!\n\n"+
+                "👤 Ім'я: %s\n"+
+                "🔗 Telegram: %s\n"+
+                "🆔 ID: %d%s\n\n"+
+                "Людей стає більше — так тримати! 🚀",
+                name, username, s.ID, total)
 }
 
 func safeRegister(m handlers.Module) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("[PANIC] module %q registration panicked: %v", m.Name(), r)
-			err = fmt.Errorf("module %q panicked: %v", m.Name(), r)
-		}
-	}()
-	m.Register()
-	return nil
+        defer func() {
+                if r := recover(); r != nil {
+                        log.Printf("[PANIC] module %q registration panicked: %v", m.Name(), r)
+                        err = fmt.Errorf("module %q panicked: %v", m.Name(), r)
+                }
+        }()
+        m.Register()
+        return nil
 }
 
 // dispatchText routes text input to step handlers or idle search.
 // modules — зарегистрированные экземпляры модулей (те же, что в New());
 // переиспользуем их, чтобы состояние из Register() было доступно.
 func dispatchText(deps *handlers.Deps, c tb.Context, searchMod *handlers.SearchModule, analyzeMod *handlers.AnalyzeModule, modules []handlers.Module) error {
-	sess := c.Get("session")
-	if sess == nil {
-		return nil
-	}
-	sessionData, ok := sess.(*session.SessionData)
-	if !ok {
-		return nil
-	}
-	step := sessionData.Step
+        sess := c.Get("session")
+        if sess == nil {
+                return nil
+        }
+        sessionData, ok := sess.(*session.SessionData)
+        if !ok {
+                return nil
+        }
+        step := sessionData.Step
 
-	// If user is in a step-based flow, route to the appropriate handler
-	if step != "idle" && step != "" {
-		for _, m := range modules {
-			if handler, ok := m.(handlers.StepHandler); ok {
-				if strings.HasPrefix(step, handler.StepPrefix()) {
-					handled, err := handler.HandleText(c, step, c.Text())
-					if err != nil {
-						log.Printf("[ERROR] step handler %q crashed: %v", m.Name(), err)
-						_ = c.Send("⚠️ Виникла помилка. Спробуйте /cancel і почніть заново.")
-					}
-					if handled {
-						return nil
-					}
-				}
-			}
-		}
-		return nil
-	}
+        // If user is in a step-based flow, route to the appropriate handler
+        if step != "idle" && step != "" {
+                for _, m := range modules {
+                        if handler, ok := m.(handlers.StepHandler); ok {
+                                if strings.HasPrefix(step, handler.StepPrefix()) {
+                                        handled, err := handler.HandleText(c, step, c.Text())
+                                        if err != nil {
+                                                log.Printf("[ERROR] step handler %q crashed: %v", m.Name(), err)
+                                                handlers.AlertUserError(c, "step "+m.Name(), err.Error())
+                                                _ = c.Send("⚠️ Виникла помилка. Спробуйте /cancel і почніть заново.")
+                                        }
+                                        if handled {
+                                                return nil
+                                        }
+                                }
+                        }
+                }
+                return nil
+        }
 
-	// ТЗ №6 «Розбір відмови»: пересланный длинный текст в покое —
-	// вероятнее всего, ответ органа. Поиск органа по такому тексту всё равно
-	// бесполезен, зато AI-разбор — то, что нужно (короткие пересылки
-	// по-прежнему ищут орган).
-	text := strings.TrimSpace(c.Text())
-	if analyzeMod != nil && isForwardedLongText(c, text) {
-		return analyzeMod.OfferForward(c, text)
-	}
+        // ТЗ №6 «Розбір відмови»: пересланный длинный текст в покое —
+        // вероятнее всего, ответ органа. Поиск органа по такому тексту всё равно
+        // бесполезен, зато AI-разбор — то, что нужно (короткие пересылки
+        // по-прежнему ищут орган).
+        text := strings.TrimSpace(c.Text())
+        if analyzeMod != nil && isForwardedLongText(c, text) {
+                return analyzeMod.OfferForward(c, text)
+        }
 
-	// User is in idle state — try directory search
-	if searchMod != nil && len(strings.TrimSpace(c.Text())) >= 3 {
-		return searchMod.HandleSearch(c, strings.TrimSpace(c.Text()))
-	}
+        // User is in idle state — try directory search
+        if searchMod != nil && len(strings.TrimSpace(c.Text())) >= 3 {
+                return searchMod.HandleSearch(c, strings.TrimSpace(c.Text()))
+        }
 
-	return nil
+        return nil
 }
 
 // isForwardedLongText — пересланное сообщение с достаточно длинным текстом:
 // реальные ответы органов длинные, а пересланные названия органов — короткие.
 func isForwardedLongText(c tb.Context, text string) bool {
-	if msg := c.Message(); msg == nil || !msg.IsForwarded() {
-		return false
-	}
-	return utf8.RuneCountInString(text) >= 60
+        if msg := c.Message(); msg == nil || !msg.IsForwarded() {
+                return false
+        }
+        return utf8.RuneCountInString(text) >= 60
 }

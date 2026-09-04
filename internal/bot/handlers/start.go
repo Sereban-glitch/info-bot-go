@@ -1,39 +1,71 @@
 package handlers
 
 import (
-	"fmt"
-	"log"
-	"time"
+        "fmt"
+        "log"
+        "strings"
+        "time"
 
-	tb "gopkg.in/telebot.v3"
+        tb "gopkg.in/telebot.v3"
 
-	"info-bot-go/internal/config"
-	"info-bot-go/internal/session"
-	"info-bot-go/internal/stats"
+        "info-bot-go/internal/alert"
+        "info-bot-go/internal/config"
+        "info-bot-go/internal/session"
+        "info-bot-go/internal/stats"
 )
 
 // safeHandler wraps a telebot handler with panic recovery and error logging.
 func safeHandler(name string, fn tb.HandlerFunc) tb.HandlerFunc {
-	return func(c tb.Context) error {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("[PANIC] handler %q: %v", name, r)
-			}
-		}()
-		if err := fn(c); err != nil {
-			log.Printf("[ERROR] handler %q: %v", name, err)
-		}
-		return nil
-	}
+        return func(c tb.Context) error {
+                defer func() {
+                        if r := recover(); r != nil {
+                                log.Printf("[PANIC] handler %q: %v", name, r)
+                                alertUserIssue(c, name, fmt.Sprintf("PANIC: %v", r))
+                        }
+                }()
+                if err := fn(c); err != nil {
+                        log.Printf("[ERROR] handler %q: %v", name, err)
+                        alertUserIssue(c, name, err.Error())
+                }
+                return nil
+        }
+}
+
+// alertUserIssue — владелец узнаёт об ошибке пользователя сразу
+// (алерт в чат), а не из утреннего доклада Арчи через часы.
+func alertUserIssue(c tb.Context, where, errText string) {
+        if c == nil || c.Sender() == nil {
+                return
+        }
+        s := c.Sender()
+        alert.UserError(s.ID, senderLabel(s), "handler «"+where+"»", errText)
+}
+
+// senderLabel — компактная подпись пользователя для алерта владельцу.
+func senderLabel(s *tb.User) string {
+        name := strings.TrimSpace(s.FirstName + " " + s.LastName)
+        if s.Username != "" {
+                if name != "" {
+                        return name + " @" + s.Username
+                }
+                return "@" + s.Username
+        }
+        return name
+}
+
+// AlertUserError — экспортная обёртка для вызовов вне handlers
+// (bot.go: падение step-обработчика).
+func AlertUserError(c tb.Context, where, errText string) {
+        alertUserIssue(c, where, errText)
 }
 
 // saveSession persists the session from context.
 func saveSession(deps *Deps, c tb.Context) {
-	sess := c.Get("session").(*session.SessionData)
-	key := session.SessionKey(c.Sender().ID)
-	if err := deps.Sessions.Set(key, sess); err != nil {
-		log.Printf("[ERROR] save session %d: %v", c.Sender().ID, err)
-	}
+        sess := c.Get("session").(*session.SessionData)
+        key := session.SessionKey(c.Sender().ID)
+        if err := deps.Sessions.Set(key, sess); err != nil {
+                log.Printf("[ERROR] save session %d: %v", c.Sender().ID, err)
+        }
 }
 
 // ---------------------------------------------------------------------------
@@ -41,89 +73,89 @@ func saveSession(deps *Deps, c tb.Context) {
 // ---------------------------------------------------------------------------
 
 type StartModule struct {
-	deps *Deps
-	bot  *tb.Bot
+        deps *Deps
+        bot  *tb.Bot
 }
 
 func NewStartModule(deps *Deps) *StartModule {
-	return &StartModule{deps: deps, bot: deps.Bot}
+        return &StartModule{deps: deps, bot: deps.Bot}
 }
 
 func (m *StartModule) Name() string { return "start" }
 
 func (m *StartModule) Register() {
-	m.bot.Handle("/start", safeHandler("start", m.handleStart))
+        m.bot.Handle("/start", safeHandler("start", m.handleStart))
 }
 
 func (m *StartModule) handleStart(c tb.Context) error {
-	sess := c.Get("session").(*session.SessionData)
+        sess := c.Get("session").(*session.SessionData)
 
-	// Set chat menu button
-	if m.deps.Cfg.MiniAppURL != "" {
-		_ = m.bot.SetMenuButton(c.Sender(), &tb.MenuButton{
-			Type:   tb.MenuButtonWebApp,
-			Text:   "Прозоро",
-			WebApp: &tb.WebApp{URL: m.deps.Cfg.MiniAppURL},
-		})
-	}
+        // Set chat menu button
+        if m.deps.Cfg.MiniAppURL != "" {
+                _ = m.bot.SetMenuButton(c.Sender(), &tb.MenuButton{
+                        Type:   tb.MenuButtonWebApp,
+                        Text:   "Прозоро",
+                        WebApp: &tb.WebApp{URL: m.deps.Cfg.MiniAppURL},
+                })
+        }
 
-	welcome := "👋 Вітаю! Я — *Прозоро*, помічник для запитів на публічну інформацію через портал «Доступ до правди» (dostup.org.ua).\n\n" +
-		"🌐 *ЯК ЦЕ ПРАЦЮЄ:*\n" +
-		"• Ваш запит публікується на порталі та прямує до держоргану.\n" +
-		"• Ви отримуєте *публічне посилання* — відповідь видно без реєстрації.\n" +
-		"• Я *повідомлю в цей чат*, коли орган відповість.\n\n" +
-		"🛡️ *БЕЗПЕКА ТА АНОНІМНІСТЬ:*\n" +
-		"• Запити подаються від громадської ініціативи «Громадський моніторинг» — ваше прізвище не обов'язкове.\n" +
-		"• Юридична сила: ЗУ № 2939-VI «Про доступ до публічної інформації».\n" +
-		"• Публічність запиту — додатковий тиск на орган і захист від ігнорування.\n\n" +
-		"✍️ Електронні запити не потребують підпису. Email не потрібен.\n\n" +
-		"▶️ Почати: /new\n" +
-		"📚 Готові шаблони: /templates\n" +
-		"🔍 Пошук органу: надішліть назву прямо в чат"
+        welcome := "👋 Вітаю! Я — *Прозоро*, помічник для запитів на публічну інформацію через портал «Доступ до правди» (dostup.org.ua).\n\n" +
+                "🌐 *ЯК ЦЕ ПРАЦЮЄ:*\n" +
+                "• Ваш запит публікується на порталі та прямує до держоргану.\n" +
+                "• Ви отримуєте *публічне посилання* — відповідь видно без реєстрації.\n" +
+                "• Я *повідомлю в цей чат*, коли орган відповість.\n\n" +
+                "🛡️ *БЕЗПЕКА ТА АНОНІМНІСТЬ:*\n" +
+                "• Запити подаються від громадської ініціативи «Громадський моніторинг» — ваше прізвище не обов'язкове.\n" +
+                "• Юридична сила: ЗУ № 2939-VI «Про доступ до публічної інформації».\n" +
+                "• Публічність запиту — додатковий тиск на орган і захист від ігнорування.\n\n" +
+                "✍️ Електронні запити не потребують підпису. Email не потрібен.\n\n" +
+                "▶️ Почати: /new\n" +
+                "📚 Готові шаблони: /templates\n" +
+                "🔍 Пошук органу: надішліть назву прямо в чат"
 
-	kb := MainMenuKeyboard(m.deps.Cfg, c.Sender().ID)
-	if err := c.Send(welcome, kb, tb.ModeMarkdown); err != nil {
-		return err
-	}
+        kb := MainMenuKeyboard(m.deps.Cfg, c.Sender().ID)
+        if err := c.Send(welcome, kb, tb.ModeMarkdown); err != nil {
+                return err
+        }
 
-	// ТЗ №8 (E2): вернувшийся после 14+ дней отсутствия получает короткую
-	// сводку «что нового» — главный магнит возврата: розбір и рейтинг.
-	prevSeen, _ := c.Get("prevSeen").(time.Time)
-	if shouldShowWhatsNew(prevSeen, sess.WhatsNewShownAt, time.Now()) {
-		sess.WhatsNewShownAt = time.Now()
-		whatsNew := "👋 <b>З поверненням!</b> Поки вас не було, бот підрос:\n\n" +
-			"⚖️ <b>Розбір відповідей органів</b> — надішліть відповідь органу (текстом, фото чи голосом), і AI визначить: відмова це чи відповідь по суті, чи законна вона, — і підготує готову скаргу чи уточнення.\n\n" +
-			"🏆 <b>Рейтинг відкритості</b> — усі 2145 органів України: хто відповідає на запити, а хто ігнорує.\n\n" +
-			"Спробуйте розбір — кнопка нижче ⚡"
-		_ = c.Send(whatsNew, tb.ModeHTML)
-	}
+        // ТЗ №8 (E2): вернувшийся после 14+ дней отсутствия получает короткую
+        // сводку «что нового» — главный магнит возврата: розбір и рейтинг.
+        prevSeen, _ := c.Get("prevSeen").(time.Time)
+        if shouldShowWhatsNew(prevSeen, sess.WhatsNewShownAt, time.Now()) {
+                sess.WhatsNewShownAt = time.Now()
+                whatsNew := "👋 <b>З поверненням!</b> Поки вас не було, бот підрос:\n\n" +
+                        "⚖️ <b>Розбір відповідей органів</b> — надішліть відповідь органу (текстом, фото чи голосом), і AI визначить: відмова це чи відповідь по суті, чи законна вона, — і підготує готову скаргу чи уточнення.\n\n" +
+                        "🏆 <b>Рейтинг відкритості</b> — усі 2145 органів України: хто відповідає на запити, а хто ігнорує.\n\n" +
+                        "Спробуйте розбір — кнопка нижче ⚡"
+                _ = c.Send(whatsNew, tb.ModeHTML)
+        }
 
-	// ТЗ №8 (E1): «первый успех за 30 секунд» — демо-розбір в один клик
-	// для тех, кто ещё не пробовал (один раз на пользователя).
-	if !sess.DemoAnalyzeDone {
-		demoKB := &tb.ReplyMarkup{}
-		demoKB.InlineKeyboard = [][]tb.InlineButton{
-			{{Unique: "an_demo", Text: "⚡ Спробувати розбір на прикладі (30 сек)"}},
-		}
-		_ = c.Send("⚡ Хочете побачити силу бота за 30 секунд — без свого листа?", demoKB)
-	}
-	return nil
+        // ТЗ №8 (E1): «первый успех за 30 секунд» — демо-розбір в один клик
+        // для тех, кто ещё не пробовал (один раз на пользователя).
+        if !sess.DemoAnalyzeDone {
+                demoKB := &tb.ReplyMarkup{}
+                demoKB.InlineKeyboard = [][]tb.InlineButton{
+                        {{Unique: "an_demo", Text: "⚡ Спробувати розбір на прикладі (30 сек)"}},
+                }
+                _ = c.Send("⚡ Хочете побачити силу бота за 30 секунд — без свого листа?", demoKB)
+        }
+        return nil
 }
 
 // shouldShowWhatsNew решает, показать ли вернувшемуся «Що нового»:
 // отсутствовал 14+ дней, и последнее «что нового» показывали тоже
 // больше 14 дней назад (защита от спама при частых возвращениях).
 func shouldShowWhatsNew(prevSeen, shownAt, now time.Time) bool {
-	if prevSeen.IsZero() {
-		return false // новичок: ему положен онбординг, а не «что нового»
-	}
-	if now.Sub(prevSeen) < 14*24*time.Hour {
-		return false // уходил ненадолго
-	}
-	if !shownAt.IsZero() && now.Sub(shownAt) < 14*24*time.Hour {
-		return false // недавно уже показывали
-	}
-	return true
+        if prevSeen.IsZero() {
+                return false // новичок: ему положен онбординг, а не «что нового»
+        }
+        if now.Sub(prevSeen) < 14*24*time.Hour {
+                return false // уходил ненадолго
+        }
+        if !shownAt.IsZero() && now.Sub(shownAt) < 14*24*time.Hour {
+                return false // недавно уже показывали
+        }
+        return true
 }
 
 // ---------------------------------------------------------------------------
@@ -131,116 +163,116 @@ func shouldShowWhatsNew(prevSeen, shownAt, now time.Time) bool {
 // ---------------------------------------------------------------------------
 
 type StatsModule struct {
-	deps *Deps
-	bot  *tb.Bot
+        deps *Deps
+        bot  *tb.Bot
 }
 
 func NewStatsModule(deps *Deps) *StatsModule {
-	return &StatsModule{deps: deps, bot: deps.Bot}
+        return &StatsModule{deps: deps, bot: deps.Bot}
 }
 
 func (m *StatsModule) Name() string { return "stats" }
 
 func (m *StatsModule) Register() {
-	m.bot.Handle("/stats", safeHandler("stats", m.handleStats))
-	m.bot.Handle("📊 Статистика", safeHandler("stats_btn", m.handleStats))
+        m.bot.Handle("/stats", safeHandler("stats", m.handleStats))
+        m.bot.Handle("📊 Статистика", safeHandler("stats_btn", m.handleStats))
 }
 
 func (m *StatsModule) handleStats(c tb.Context) error {
-	isAdmin := m.deps.Cfg.AdminID != 0 && c.Sender().ID == m.deps.Cfg.AdminID
+        isAdmin := m.deps.Cfg.AdminID != 0 && c.Sender().ID == m.deps.Cfg.AdminID
 
-	if isAdmin {
-		return m.handleAdminStats(c)
-	}
-	return m.handleUserStats(c)
+        if isAdmin {
+                return m.handleAdminStats(c)
+        }
+        return m.handleUserStats(c)
 }
 
 func (m *StatsModule) handleUserStats(c tb.Context) error {
-	requests := m.deps.SentLog.ListByUser(c.Sender().ID)
-	sent := len(requests)
-	replied := 0
-	pending := 0
+        requests := m.deps.SentLog.ListByUser(c.Sender().ID)
+        sent := len(requests)
+        replied := 0
+        pending := 0
 
-	for _, r := range requests {
-		if r.ReplyReceivedAt != "" || r.Status == "replied" {
-			replied++
-		} else {
-			pending++
-		}
-	}
+        for _, r := range requests {
+                if r.ReplyReceivedAt != "" || r.Status == "replied" {
+                        replied++
+                } else {
+                        pending++
+                }
+        }
 
-	text := fmt.Sprintf("📊 *Ваша статистика:*\n\n"+
-		"📨 Запитів надіслано: %d\n"+
-		"✅ Відповідей отримано: %d\n"+
-		"⏳ Очікуєте відповідь: %d\n\n"+
-		"Деталі: /my",
-		sent, replied, pending)
+        text := fmt.Sprintf("📊 *Ваша статистика:*\n\n"+
+                "📨 Запитів надіслано: %d\n"+
+                "✅ Відповідей отримано: %d\n"+
+                "⏳ Очікуєте відповідь: %d\n\n"+
+                "Деталі: /my",
+                sent, replied, pending)
 
-	return c.Send(text, tb.ModeMarkdown)
+        return c.Send(text, tb.ModeMarkdown)
 }
 
 func (m *StatsModule) handleAdminStats(c tb.Context) error {
-	gs := m.deps.Stats.Get()
+        gs := m.deps.Stats.Get()
 
-	replyRate := 0
-	if gs.TotalRequestsSent > 0 {
-		replyRate = gs.TotalRepliesReceived * 100 / gs.TotalRequestsSent
-	}
+        replyRate := 0
+        if gs.TotalRequestsSent > 0 {
+                replyRate = gs.TotalRepliesReceived * 100 / gs.TotalRequestsSent
+        }
 
-	// Живые статусы из портала: сколько запросов ждут ответа
-	dostupPending := 0
-	if m.deps.SentLog != nil {
-		dostupPending = len(m.deps.SentLog.ListPendingDostup())
-	}
+        // Живые статусы из портала: сколько запросов ждут ответа
+        dostupPending := 0
+        if m.deps.SentLog != nil {
+                dostupPending = len(m.deps.SentLog.ListPendingDostup())
+        }
 
-	moduleText := ""
-	if len(gs.ModuleUsage) > 0 {
-		moduleText = "\n📈 *По модулях:*\n"
-		for _, name := range []string{"new_request", "analyze", "dostup", "voice", "copilot", "templates", "hotlines"} {
-			if count, ok := gs.ModuleUsage[name]; ok && count > 0 {
-				moduleText += fmt.Sprintf("  • %s: %d\n", moduleLabel(name), count)
-			}
-		}
-	}
+        moduleText := ""
+        if len(gs.ModuleUsage) > 0 {
+                moduleText = "\n📈 *По модулях:*\n"
+                for _, name := range []string{"new_request", "analyze", "dostup", "voice", "copilot", "templates", "hotlines"} {
+                        if count, ok := gs.ModuleUsage[name]; ok && count > 0 {
+                                moduleText += fmt.Sprintf("  • %s: %d\n", moduleLabel(name), count)
+                        }
+                }
+        }
 
-	updatedStr := ""
-	if gs.UpdatedAt != "" {
-		if t, err := time.Parse(time.RFC3339, gs.UpdatedAt); err == nil {
-			updatedStr = t.Format("02.01.2006 15:04")
-		}
-	}
+        updatedStr := ""
+        if gs.UpdatedAt != "" {
+                if t, err := time.Parse(time.RFC3339, gs.UpdatedAt); err == nil {
+                        updatedStr = t.Format("02.01.2006 15:04")
+                }
+        }
 
-	text := fmt.Sprintf("📊 *Глобальний дашборд:*\n\n"+
-		"👥 Унікальних користувачів: %d\n"+
-		"🌐 Запитів на порталі: %d\n"+
-		"✅ Отримано відповідей: %d (%d%%)\n"+
-		"⏳ Очікують відповіді: %d\n"+
-		"🔄 Синхронізація з порталом: кожні %d хв\n"+
-		"%s\n"+
-		"🔄 Оновлено: %s\n\n"+
-		"Форсувати синхронізацію: /sync",
-		gs.TotalUsers, gs.TotalRequestsSent, gs.TotalRepliesReceived,
-		replyRate, dostupPending,
-		m.deps.Cfg.DostupSyncMinutes,
-		moduleText, updatedStr)
+        text := fmt.Sprintf("📊 *Глобальний дашборд:*\n\n"+
+                "👥 Унікальних користувачів: %d\n"+
+                "🌐 Запитів на порталі: %d\n"+
+                "✅ Отримано відповідей: %d (%d%%)\n"+
+                "⏳ Очікують відповіді: %d\n"+
+                "🔄 Синхронізація з порталом: кожні %d хв\n"+
+                "%s\n"+
+                "🔄 Оновлено: %s\n\n"+
+                "Форсувати синхронізацію: /sync",
+                gs.TotalUsers, gs.TotalRequestsSent, gs.TotalRepliesReceived,
+                replyRate, dostupPending,
+                m.deps.Cfg.DostupSyncMinutes,
+                moduleText, updatedStr)
 
-	return c.Send(text, tb.ModeMarkdown)
+        return c.Send(text, tb.ModeMarkdown)
 }
 
 func moduleLabel(name string) string {
-	labels := map[string]string{
-		"new_request": "Нові запити",
-		"analyze":     "Розбір відповідей (AI)",
-		"dostup":      "Доступ до правди",
-		"voice":       "Голосові",
-		"copilot":     "Copilot",
-		"templates":   "Шаблони",
-		"hotlines":    "Гарячі лінії",
-	}
-	if l, ok := labels[name]; ok {
-		return l
-	}
-	return name
+        labels := map[string]string{
+                "new_request": "Нові запити",
+                "analyze":     "Розбір відповідей (AI)",
+                "dostup":      "Доступ до правди",
+                "voice":       "Голосові",
+                "copilot":     "Copilot",
+                "templates":   "Шаблони",
+                "hotlines":    "Гарячі лінії",
+        }
+        if l, ok := labels[name]; ok {
+                return l
+        }
+        return name
 }
 
 // ---------------------------------------------------------------------------
@@ -248,23 +280,23 @@ func moduleLabel(name string) string {
 // ---------------------------------------------------------------------------
 
 func MainMenuKeyboard(cfg *config.Config, userID int64) *tb.ReplyMarkup {
-	kb := &tb.ReplyMarkup{ResizeKeyboard: true}
+        kb := &tb.ReplyMarkup{ResizeKeyboard: true}
 
-	rows := []tb.Row{
-		kb.Row(kb.Text("📝 Новий запит"), kb.Text("📚 Шаблони")),
-		kb.Row(kb.Text("🔍 Розбір відповіді")),
-		kb.Row(kb.Text("📨 Мої запити"), kb.Text("📊 Статистика")),
-		kb.Row(kb.WebApp("🚪 Прозоро", &tb.WebApp{URL: cfg.MiniAppURL})),
-		kb.Row(kb.Text("📞 Гарячі лінії"), kb.Text("👤 Мій профіль"), kb.Text("ℹ️ Довідка")),
-		kb.Row(kb.Text("🐞 Повідомити про помилку"), kb.Text("🌟 Підтримати проект")),
-	}
+        rows := []tb.Row{
+                kb.Row(kb.Text("📝 Новий запит"), kb.Text("📚 Шаблони")),
+                kb.Row(kb.Text("🔍 Розбір відповіді")),
+                kb.Row(kb.Text("📨 Мої запити"), kb.Text("📊 Статистика")),
+                kb.Row(kb.WebApp("🚪 Прозоро", &tb.WebApp{URL: cfg.MiniAppURL})),
+                kb.Row(kb.Text("📞 Гарячі лінії"), kb.Text("👤 Мій профіль"), kb.Text("ℹ️ Довідка")),
+                kb.Row(kb.Text("🐞 Повідомити про помилку"), kb.Text("🌟 Підтримати проект")),
+        }
 
-	if cfg.AdminID != 0 && userID == cfg.AdminID {
-		rows = append(rows, kb.Row(kb.Text("💾 Бекап проєкту")))
-	}
+        if cfg.AdminID != 0 && userID == cfg.AdminID {
+                rows = append(rows, kb.Row(kb.Text("💾 Бекап проєкту")))
+        }
 
-	kb.Reply(rows...)
-	return kb
+        kb.Reply(rows...)
+        return kb
 }
 
 var _ = stats.GlobalStats{}

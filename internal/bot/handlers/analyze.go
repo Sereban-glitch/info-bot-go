@@ -645,6 +645,9 @@ func (m *AnalyzeModule) runAnalysisOpt(c tb.Context, sess *session.SessionData, 
                         _ = c.Send("↩️ Кредит розбору повернено на баланс.")
                 }
                 log.Printf("[ANALYZE] AI error user=%d: %v", c.Sender().ID, err)
+                // Розбір — флагманская фича: владелец должен узнать о падении
+                // модели у реального пользователя сразу, а не из доклада Арчи.
+                alertUserIssue(c, "AI розбір", err.Error())
                 return c.Send("❌ Не вдалося виконати розбір (помилка моделі). Спробуйте ще раз за хвилину.")
         }
 
