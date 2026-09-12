@@ -930,6 +930,8 @@ small { font-size: 13px; color: var(--tg-hint); }
   background: rgba(88,166,255,0.3);
   color: #e6edf3;
 }
+.new-step{display:flex;align-items:center;gap:8px;font-weight:700;margin:18px 0 10px;}
+.new-step-num{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#2481cc;color:#fff;font-size:13px;flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -1032,6 +1034,43 @@ small { font-size: 13px; color: var(--tg-hint); }
       <div class="empty-icon">📭</div>
       <p>Запити відсутні</p>
       <p style="font-size:13px; margin-top:6px;">Створіть перший запит у боті: /new — його буде опубліковано на «Доступ до правди» з публічним посиланням.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== TAB: НОВИЙ ЗАПИТ ===================== -->
+<div class="tab-page" id="tab-new">
+  <div class="generator-hero">
+    <h2>➕ Новий запит</h2>
+    <p>Подайте запит на портал «Доступ до правди» прямо із застосунка — без чат-бота</p>
+  </div>
+  <div class="new-step"><span class="new-step-num">1</span> Оберіть орган</div>
+  <input class="community-search-input" id="new-organ-query" placeholder="Наприклад: міністерство охорони..." onkeydown="if(event.keyCode==13)searchBodies()">
+  <button class="gen-btn" style="width:100%;margin-bottom:12px;" onclick="searchBodies()">
+    <span class="btn-text">🔍 Знайти на порталі</span>
+  </button>
+  <div id="new-organ-results"></div>
+  <div id="new-organ-selected" style="display:none;" class="gen-recipient-hint"></div>
+  <div class="new-step"><span class="new-step-num">2</span> Тема запиту</div>
+  <input class="community-search-input" id="new-subject" maxlength="150" placeholder="Коротко: про що запит (до 150 символів)">
+  <div class="new-step"><span class="new-step-num">3</span> Текст запиту</div>
+  <input class="community-search-input" id="new-desc" placeholder="Опишіть суть одним реченням — AI складе текст..." style="margin-bottom:8px;">
+  <button class="result-action-btn secondary" style="width:100%;margin-bottom:8px;" onclick="aiFillNew()">✨ AI: скласти тему і текст</button>
+  <textarea class="gen-textarea" id="new-body" placeholder="Прошу надати..." style="min-height:140px;"></textarea>
+  <div class="new-step"><span class="new-step-num">4</span> Підпис</div>
+  <input class="community-search-input" id="new-signature" placeholder="Прізвище Ім’я По батькові">
+  <button class="gen-btn" id="new-submit-btn" onclick="submitNewRequest()">
+    <span class="btn-text">📨 Надіслати на портал</span>
+    <div class="spinner"></div>
+  </button>
+  <div class="gen-result" id="new-result">
+    <div class="gen-result-card">
+      <div class="result-header"><span style="font-weight:600;">Запит опубліковано!</span></div>
+      <div class="result-body" id="new-result-body"></div>
+      <div class="result-actions" style="margin-top:12px;">
+        <button class="result-action-btn primary" id="new-result-link" onclick="openNewResult()">🌐 Відкрити на порталі</button>
+        <button class="result-action-btn secondary" onclick="gotoRequests()">📋 До моїх запитів</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1275,6 +1314,10 @@ small { font-size: 13px; color: var(--tg-hint); }
     <span class="tab-icon">📋</span>
     <span class="tab-label">Запити</span>
   </button>
+  <button class="tab-bar-item" data-tab="new" onclick="switchTab('new')">
+    <span class="tab-icon">➕</span>
+    <span class="tab-label">Новий</span>
+  </button>
   <button class="tab-bar-item" data-tab="library" onclick="switchTab('library')">
     <span class="tab-icon">📚</span>
     <span class="tab-label">Бібліотека</span>
@@ -1471,6 +1514,7 @@ function switchTab(tabName) {
   // Lazy load data
   if (tabName === 'overview') loadOverview();
   if (tabName === 'requests') loadRequests();
+  if (tabName === 'new') initNewTab();
   if (tabName === 'library') { loadTemplates(); }
   if (tabName === 'profile') loadProfile();
   if (tabName === 'rating') loadRating(false);
@@ -1884,6 +1928,7 @@ async function loadRequests() {
   const requests = await apiCall('/api/requests');
   cachedRequests = requests || [];
   renderRequests();
+  scheduleDeadlineReminders();
 }
 
 function renderRequests() {
@@ -1952,6 +1997,14 @@ function renderRequests() {
     if (r.channel === 'dostup' && r.recipientName) {
       statsHtml = `<div class="request-body-stats" data-organ="${escHtml(r.recipientName)}"><span class="stats-loading">📊 …</span></div>`;
     }
+    let actionsHtml = "";
+    if (r.channel === "dostup" && r.status !== "bounced") {
+      const slug = (r.id || "").replace(/^dostup:/, "");
+      actionsHtml = `<div style="display:flex;gap:8px;margin-top:10px;">`
+        + `<button class="result-action-btn secondary" style="flex:1;" onclick="toggleFollowUp(&quot;${slug}&quot;,this)">✍️ Дописати</button>`
+        + `<button class="result-action-btn secondary" style="flex:1;" onclick="downloadDoc(&quot;${slug}&quot;)">📄 Документ</button>`
+        + `</div><div id="fu-${slug}" style="display:none;margin-top:8px;"></div>`;
+    }
     return `<div class="request-card ${st.css}">
       <div class="request-card-header">
         <span class="request-organ">${escHtml(r.recipientName || r.recipientEmail)}</span>
@@ -1967,6 +2020,7 @@ function renderRequests() {
       ${excerptHtml}
       ${ackHtml}
       ${urlHtml}
+      ${actionsHtml}
     </div>`;
   }).join('');
 
@@ -2473,7 +2527,210 @@ async function buyCredits() {
 /* ============================================
    INIT
    ============================================ */
+/* ============================================
+   НОВИЙ ЗАПИТ ІЗ ЗАСТОСУНКА + ДОПИСИ + SSE
+   ============================================ */
+let newBody = { slug: "", name: "" };
+let newResultUrl = "";
+
+function appAuth() {
+  const d = (tg && tg.initData) || appInitData;
+  return d || "";
+}
+
+async function apiPost(path, payload) {
+  const auth = appAuth();
+  let url = API_BASE + path;
+  if (auth) url += (url.includes("?") ? "&" : "?") + "init_data=" + encodeURIComponent(auth);
+  const headers = { "Content-Type": "application/json" };
+  if (auth) headers["X-Init-Data"] = auth;
+  const resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload) });
+  return resp.json();
+}
+
+async function initNewTab() {
+  const sig = document.getElementById("new-signature");
+  if (sig && !sig.value) {
+    try {
+      const me = await apiCall("/api/me");
+      if (me && me.fullName) sig.value = me.fullName;
+    } catch (e) {}
+  }
+  const q = document.getElementById("new-organ-query");
+  if (q) q.focus();
+}
+
+async function searchBodies() {
+  const q = document.getElementById("new-organ-query").value.trim();
+  const box = document.getElementById("new-organ-results");
+  if (q.length < 2) { showToast("Введіть щонайменше 2 літери"); return; }
+  box.innerHTML = "<p>Шукаю на порталі…</p>";
+  const items = await apiCall("/api/bodies?q=" + encodeURIComponent(q));
+  if (!items || items.length === 0) {
+    box.innerHTML = "<p>Нічого не знайдено. Спробуйте іншу назву.</p>";
+    return;
+  }
+  window._bodiesCache = items;
+  box.innerHTML = items.slice(0, 10).map((b, i) =>
+    `<button class="result-action-btn secondary" style="display:block;width:100%;text-align:left;margin-bottom:6px;" onclick="selectBody(${i})">🏛 ${escHtml(b.name)}</button>`
+  ).join("");
+}
+
+function selectBody(i) {
+  const b = (window._bodiesCache || [])[i];
+  if (!b) return;
+  newBody = { slug: b.slug, name: b.name };
+  const sel = document.getElementById("new-organ-selected");
+  sel.style.display = "";
+  sel.textContent = "📌 Орган: " + b.name;
+  document.getElementById("new-organ-results").innerHTML = "";
+}
+
+async function aiFillNew() {
+  const desc = document.getElementById("new-desc").value.trim();
+  if (!desc) { showToast("Опишіть суть запиту одним реченням"); return; }
+  showToast("AI складає текст…");
+  const data = await apiCall("/api/generate-template", {
+    method: "POST",
+    body: JSON.stringify({ description: desc }),
+  });
+  if (!data) { showToast("Помилка генерації"); return; }
+  if (data.subject) document.getElementById("new-subject").value = data.subject;
+  if (data.body) document.getElementById("new-body").value = data.body;
+  if (data.recipientHint) {
+    showToast("Рекомендований орган: " + data.recipientHint);
+    document.getElementById("new-organ-query").value = data.recipientHint;
+    searchBodies();
+  }
+}
+
+async function submitNewRequest() {
+  if (!newBody.slug) { showToast("Спочатку оберіть орган (крок 1)"); return; }
+  const subject = document.getElementById("new-subject").value.trim();
+  const body = document.getElementById("new-body").value.trim();
+  const signature = document.getElementById("new-signature").value.trim();
+  if (!subject || !body || !signature) { showToast("Заповніть тему, текст і підпис"); return; }
+  const btn = document.getElementById("new-submit-btn");
+  btn.classList.add("loading"); btn.disabled = true;
+  try {
+    const data = await apiPost("/api/requests", {
+      bodySlug: newBody.slug, recipientName: newBody.name,
+      subject: subject, body: body, signature: signature,
+    });
+    if (!data.ok) { showToast(data.error || "Помилка подання"); return; }
+    const r = data.data || {};
+    newResultUrl = r.url || "";
+    const rb = document.getElementById("new-result-body");
+    rb.innerHTML = `<div>🏛 ${escHtml(newBody.name)}</div><div>📂 «${escHtml(subject)}»</div>`
+      + (r.deadline ? `<div>⏰ Дедлайн відповіді: <b>${escHtml(r.deadline)}</b></div>` : "")
+      + (r.url ? "" : "<div>Портал прийняв запит, посилання з’явиться у «Моїх запитах» за хвилину.</div>");
+    document.getElementById("new-result").classList.add("visible");
+    document.getElementById("new-result-link").style.display = r.url ? "" : "none";
+    newBody = { slug: "", name: "" };
+    document.getElementById("new-organ-selected").style.display = "none";
+    await loadRequests();
+  } catch (e) { showToast("Помилка з’єднання"); }
+  finally { btn.classList.remove("loading"); btn.disabled = false; }
+}
+
+function openNewResult() {
+  if (newResultUrl) window.open(newResultUrl, "_blank");
+}
+
+function gotoRequests() { switchTab("requests"); }
+
+function toggleFollowUp(slug, btn) {
+  const box = document.getElementById("fu-" + slug);
+  if (!box) return;
+  if (box.style.display === "none") {
+    box.style.display = "";
+    box.innerHTML = `<textarea class="gen-textarea" id="fu-text-${slug}" placeholder="Уточнення або додаткове питання до органу..." style="min-height:90px;margin-bottom:8px;"></textarea>`
+      + `<div style="display:flex;gap:8px;">`
+      + `<button class="result-action-btn primary" style="flex:1;" onclick="sendFollowUp(&quot;${slug}&quot;)">Надіслати допис</button>`
+      + `<button class="result-action-btn secondary" onclick="toggleFollowUp(&quot;${slug}&quot;,null)">Скасувати</button>`
+      + `</div>`;
+    const ta = document.getElementById("fu-text-" + slug);
+    if (ta) ta.focus();
+  } else { box.style.display = "none"; box.innerHTML = ""; }
+}
+
+async function sendFollowUp(slug) {
+  const ta = document.getElementById("fu-text-" + slug);
+  const text = ta ? ta.value.trim() : "";
+  if (!text) { showToast("Напишіть текст допису"); return; }
+  showToast("Надсилаю допис…");
+  try {
+    const data = await apiPost("/api/followups", { slug: slug, text: text });
+    if (!data.ok) { showToast(data.error || "Помилка"); return; }
+    showToast("✅ Допис опубліковано на порталі");
+    await loadRequests();
+  } catch (e) { showToast("Помилка з’єднання"); }
+}
+
+function downloadDoc(slug) {
+  const r = (cachedRequests || []).find(x => (x.id || "") === "dostup:" + slug);
+  if (!r) { showToast("Запит не знайдено"); return; }
+  const html = `<!DOCTYPE html><html lang="uk"><head><meta charset="utf-8"><title>Запит — ${escHtml(r.subject)}</title></head>`
+    + `<body style="font-family:sans-serif;max-width:700px;margin:20px auto;line-height:1.6;">`
+    + `<h1>Інформаційний запит</h1>`
+    + `<p><b>Орган:</b> ${escHtml(r.recipientName || "")}</p>`
+    + `<p><b>Тема:</b> ${escHtml(r.subject || "")}</p>`
+    + `<p><b>Дата подання:</b> ${escHtml(r.date || "")}</p>`
+    + `<p><b>Статус:</b> ${escHtml(r.status || "")}</p>`
+    + (r.url ? `<p><b>Посилання:</b> <a href="${escHtml(r.url)}">${escHtml(r.url)}</a></p>` : "")
+    + (r.responseExcerpt ? `<h2>Відповідь органу</h2><p>${escHtml(r.responseExcerpt)}</p>` : "")
+    + `<hr><p style="font-size:12px;color:#888;">Сформовано застосунком Smart Zapyt • портал «Доступ до правди»</p>`
+    + `</body></html>`;
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "zapyt-" + slug + ".html";
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+/* SSE-стрічка: живі оновлення без перезавантаження */
+let eventSource = null;
+function startEventStream() {
+  if (eventSource || typeof EventSource === "undefined") return true;
+  const auth = appAuth();
+  if (!auth) return false;
+  try {
+    eventSource = new EventSource(API_BASE + "/api/events?init_data=" + encodeURIComponent(auth));
+    eventSource.addEventListener("update", () => {
+      loadRequests();
+      if (currentTab === "overview") loadOverview();
+    });
+    return true;
+  } catch (e) { eventSource = null; return false; }
+}
+setInterval(() => { startEventStream(); }, 30000);
+
+/* Локальні нагадування про дедлайни (тільки застосунок, без сервера) */
+async function scheduleDeadlineReminders() {
+  try {
+    if (!inCapacitor || !window.Capacitor || !window.Capacitor.Plugins) return;
+    const LN = window.Capacitor.Plugins.LocalNotifications;
+    if (!LN) return;
+    const all = [];
+    for (let i = 0; i < 100; i++) all.push({ id: 1000 + i });
+    await LN.cancel({ notifications: all });
+    const urgent = (cachedRequests || []).filter(r => r.status === "pending" && r.daysLeft <= 2 && r.daysLeft >= 0);
+    if (urgent.length === 0) return;
+    const perm = await LN.requestPermissions();
+    if (perm && perm.display && perm.display !== "granted") return;
+    const notes = urgent.slice(0, 10).map((r, i) => ({
+      id: 1000 + i,
+      title: r.daysLeft === 0 ? "Дедлайн запиту сьогодні!" : "Дедлайн запиту завтра!",
+      body: (r.recipientName || "") + ": " + (r.subject || ""),
+      schedule: { at: new Date(Date.now() + 4 * 3600 * 1000) },
+    }));
+    await LN.schedule({ notifications: notes });
+  } catch (e) {}
+}
+
 loadOverview();
+startEventStream();
 </script>
 <script>
 // Register service worker for PWA
