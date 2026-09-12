@@ -36,6 +36,8 @@ type Server struct {
 	starsClient  *stars.Client               // создание инвойс-ссылок Bot API
 	analyzeUsers *ratelimiter.KeyRateLimiter // часовой лимит бесплатных розборов (6/час на пользователя)
 	appLogin     *applogin.Store             // коды входа в нативний застосунок (nil = вимкнено)
+	events       *EventHub                // SSE-шина застосунка (nil = вимкнено)
+	followUps    *session.FollowUpThreads // гілки запитів (nil = без гілок)
 }
 
 // NewServer creates a new web server.
@@ -80,6 +82,17 @@ func (s *Server) SetStars(store *stars.Store) {
 	}
 }
 
+// SetEvents підключає SSE-шину подій і запускає фоновий монітор журналу.
+func (s *Server) SetEvents(hub *EventHub) {
+	s.events = hub
+	s.startEventMonitor()
+}
+
+// SetFollowUps підключає сховище гілок запитів (з бота).
+func (s *Server) SetFollowUps(store *session.FollowUpThreads) {
+	s.followUps = store
+}
+
 // Start starts the HTTP server on the given address (e.g. ":8080").
 func (s *Server) Start(addr string) error {
 	mux := http.NewServeMux()
@@ -95,6 +108,9 @@ func (s *Server) Start(addr string) error {
 	// API routes
 	mux.HandleFunc("/api/me", s.corsMiddleware(aut(s.authMiddleware(s.handleMe))))
 	mux.HandleFunc("/api/requests", s.corsMiddleware(aut(s.authMiddleware(s.handleRequests))))
+	mux.HandleFunc("/api/bodies", s.corsMiddleware(aut(s.authMiddleware(s.handleBodies))))
+	mux.HandleFunc("/api/followups", s.corsMiddleware(gen(s.authMiddleware(s.handleFollowUp))))
+	mux.HandleFunc("/api/events", s.corsMiddleware(aut(s.authMiddleware(s.handleEvents))))
 	mux.HandleFunc("/api/templates", s.corsMiddleware(aut(s.authMiddleware(s.handleTemplates))))
 	mux.HandleFunc("/api/directory", s.corsMiddleware(aut(s.authMiddleware(s.handleDirectory))))
 	mux.HandleFunc("/api/stats", s.corsMiddleware(aut(s.authMiddleware(s.handleStats))))
@@ -138,7 +154,7 @@ func (s *Server) Start(addr string) error {
 		Addr:         addr,
 		Handler:      handler,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 120 * time.Second, // щедро: генерация шаблона с ИИ может занять десятки секунд
+		WriteTimeout: 0, // SSE-стрім живе необмежено; завислі зєднання прибирає контекст
 		IdleTimeout:  120 * time.Second,
 	}
 	return srv.ListenAndServe()

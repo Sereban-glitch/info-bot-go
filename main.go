@@ -93,6 +93,9 @@ func main() {
 	webServer.SetDostup(b.Dostup(), b.DostupCatalog(), b.DostupRatings())
 	// Монетизация Stars (каркас, выключена по умолчанию)
 	webServer.SetStars(b.Stars())
+	// Застосунок: SSE-стрічка подій + гілки запитів (той же інстанс, що в боті)
+	webServer.SetEvents(web.NewEventHub())
+	webServer.SetFollowUps(b.FollowUps())
 	webErr := make(chan error, 1)
 	go func() {
 		if err := webServer.Start(":8081"); err != nil {

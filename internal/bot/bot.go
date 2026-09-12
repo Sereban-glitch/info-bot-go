@@ -45,6 +45,7 @@ type Bot struct {
 	dostup        *dostup.Client       // канал «Доступ до правды»
 	dostupCatalog *dostup.CatalogStore // локальный каталог органов
 	dostupRatings *dostup.RatingsStore // рейтинги органов портала
+	followUps     *session.FollowUpThreads // гілки запитів (той же інстанс — у handlers.deps)
 }
 
 // New creates a new Bot with all dependencies.
@@ -152,6 +153,7 @@ func New(cfg *config.Config, sessStore *session.FileStore, sentLog *sentlog.Sent
 		botInst.dostupRatings = ratingsStore
 		// Гилки запросов для уточнений (followup)
 		deps.FollowUps = session.NewFollowUpThreads(filepath.Join(sessDir(), "followup_threads.json"))
+		botInst.followUps = deps.FollowUps
 		// Попытки отправки без подтверждения: синхронизация ищет автора
 		// «чужого» запроса среди них, прежде чем приписывать владельцу
 		deps.PendingSubmits = handlers.NewPendingSubmits(filepath.Join(sessDir(), "pending_submits.json"))
@@ -250,6 +252,9 @@ func (b *Bot) DostupCatalog() *dostup.CatalogStore { return b.dostupCatalog }
 
 // DostupRatings — персистентные рейтинги органов портала.
 func (b *Bot) DostupRatings() *dostup.RatingsStore { return b.dostupRatings }
+
+// FollowUps — сховище гілок запитів (для веб-сервера, застосунок).
+func (b *Bot) FollowUps() *session.FollowUpThreads { return b.followUps }
 
 // sessDir — каталог сессий (для рабочих файлов).
 func sessDir() string {

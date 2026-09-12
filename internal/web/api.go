@@ -199,6 +199,10 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 
 // handleRequests returns the user's sent requests.
 func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodPost {
+                s.handleCreateRequest(w, r)
+                return
+        }
         if r.Method != http.MethodGet {
                 writeJSON(w, http.StatusMethodNotAllowed, APIResponse{OK: false, Err: "method not allowed"})
                 return
