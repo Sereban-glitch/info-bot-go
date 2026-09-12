@@ -19,6 +19,21 @@ func htmlEscape(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
 }
 
+// markdownEscape экранирует спецсимволы Markdown V1 в произвольном тексте
+// (запрос пользователя, имя органа, email), чтобы он не ломал разметку
+// Telegram: незакрытая entity (*, _, `, [) даёт 400
+// «can't parse entities: Can't find end of the entity».
+func markdownEscape(s string) string {
+	return strings.NewReplacer(
+		"\\", "\\\\",
+		"*", "\\*",
+		"_", "\\_",
+		"`", "\\`",
+		"[", "\\[",
+		"]", "\\]",
+	).Replace(s)
+}
+
 // htmlLink возвращает кликабельную ссылку, у которой видимый текст —
 // сам URL (удобно копировать). Подчёркивания в слаге сохраняются.
 func htmlLink(url string) string {

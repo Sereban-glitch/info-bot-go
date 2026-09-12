@@ -451,7 +451,7 @@ func (m *NewRequestModule) handleVerify(c tb.Context) error {
 		kb.InlineKeyboard = [][]tb.InlineButton{
 			{{Unique: "nr_keep", Text: "⬅️ Назад до чернетки"}},
 		}
-		_ = c.Edit(fmt.Sprintf("ℹ️ Не вдалося знайти email для «%s» в інтернеті.\nПоточний адрес у чернетці: `%s`", sess.Draft.RecipientName, sess.Draft.RecipientEmail), kb, tb.ModeMarkdown)
+		_ = c.Edit(fmt.Sprintf("ℹ️ Не вдалося знайти email для «%s» в інтернеті.\nПоточний адрес у чернетці: `%s`", markdownEscape(sess.Draft.RecipientName), markdownEscape(sess.Draft.RecipientEmail)), kb, tb.ModeMarkdown)
 		return nil
 	}
 
@@ -469,7 +469,7 @@ func (m *NewRequestModule) handleVerify(c tb.Context) error {
 		kb.InlineKeyboard = [][]tb.InlineButton{
 			{{Unique: "nr_keep", Text: "⬅️ Назад до чернетки"}},
 		}
-		_ = c.Edit(fmt.Sprintf("✅ *Фактчекінг пройдено!*\n\nEmail `%s` є актуальним для «%s».", result.Email, result.AgencyName), kb, tb.ModeMarkdown)
+		_ = c.Edit(fmt.Sprintf("✅ *Фактчекінг пройдено!*\n\nEmail `%s` є актуальним для «%s».", markdownEscape(result.Email), markdownEscape(result.AgencyName)), kb, tb.ModeMarkdown)
 	} else {
 		kb := &tb.ReplyMarkup{}
 		kb.InlineKeyboard = [][]tb.InlineButton{
@@ -477,7 +477,7 @@ func (m *NewRequestModule) handleVerify(c tb.Context) error {
 			{{Unique: "nr_keep", Text: "❌ Залишити старий"}},
 		}
 		_ = c.Edit(fmt.Sprintf("⚠️ *Знайдено новий email!*\n\n🏛 *%s*\n📧 Було: `%s`\n📧 Стало: `%s`\n\nОновити адресу в чернетці?",
-			result.AgencyName, sess.Draft.RecipientEmail, result.Email), kb, tb.ModeMarkdown)
+			markdownEscape(result.AgencyName), markdownEscape(sess.Draft.RecipientEmail), markdownEscape(result.Email)), kb, tb.ModeMarkdown)
 	}
 	return nil
 }

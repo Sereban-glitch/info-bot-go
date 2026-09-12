@@ -89,7 +89,7 @@ func (m *SearchModule) HandleSearch(c tb.Context, query string) error {
 	}
 
 	text := fmt.Sprintf("🌐 *Знайдено в інтернеті!*\n\n🏛 *Орган:* %s\n📧 *Email:* %s\n\nБуде збережено в базу для майбутніх пошуків.",
-		result.AgencyName, result.Email)
+		markdownEscape(result.AgencyName), markdownEscape(result.Email))
 	c.Bot().Edit(msg, text, kb, tb.ModeMarkdown)
 	return nil
 }
@@ -117,7 +117,7 @@ func (m *SearchModule) showDostupResults(c tb.Context, query string, bodies []do
 	kb.InlineKeyboard = rows
 
 	text := fmt.Sprintf("🔍 Знайдено *%d* розпорядників на порталі «Доступ до правди» для «%s»:\n\nОберіть орган — запит буде подано через портал з публічною сторінкою відстеження:",
-		len(bodies), query)
+		len(bodies), markdownEscape(query))
 	return c.Send(text, kb, tb.ModeMarkdown)
 }
 
@@ -142,7 +142,7 @@ func (m *SearchModule) showLocalResults(c tb.Context, query string, results []di
 	})
 	kb.InlineKeyboard = rows
 
-	text := fmt.Sprintf("🔍 Знайдено *%d* результатів для «%s»:\n\nОберіть орган:", len(results), query)
+	text := fmt.Sprintf("🔍 Знайдено *%d* результатів для «%s»:\n\nОберіть орган:", len(results), markdownEscape(query))
 	return c.Send(text, kb, tb.ModeMarkdown)
 }
 

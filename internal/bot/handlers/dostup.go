@@ -199,7 +199,7 @@ func (m *DostupModule) searchAndOffer(c tb.Context, name string) error {
 		kb.InlineKeyboard = [][]tb.InlineButton{
 			{{Unique: "dp_back", Text: "🔄 Змінити розпорядителя"}},
 		}
-		_ = c.Send(fmt.Sprintf("✅ Знайдено на порталі: *%s*\n🌐 Запит буде опубліковано на dostup.org.ua", bodies[0].Name), kb, tb.ModeMarkdown)
+		_ = c.Send(fmt.Sprintf("✅ Знайдено на порталі: *%s*\n🌐 Запит буде опубліковано на dostup.org.ua", markdownEscape(bodies[0].Name)), kb, tb.ModeMarkdown)
 		// Тема уже заполнена — сразу к подтверждению отправки
 		if sess.Draft.Subject != "" && sess.Draft.Body != "" {
 			sess.Step = "dostup:confirm"
