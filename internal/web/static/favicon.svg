@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-label="Прозоро">
+  <rect width="16" height="16" rx="3" fill="#24384F"/>
+  <rect x="4" y="2" width="8" height="11" rx="1" fill="#FAF7F1"/>
+  <rect x="5" y="5" width="6" height="1" fill="#24384F"/>
+  <rect x="5" y="7" width="6" height="1" fill="#6D685E"/>
+  <rect x="5" y="9" width="4" height="1" fill="#6D685E"/>
+  <circle cx="12" cy="12" r="3.5" fill="#1C1A16"/>
+  <circle cx="12" cy="12" r="2" fill="none" stroke="#F2EEE6" stroke-width="1"/>
+</svg>

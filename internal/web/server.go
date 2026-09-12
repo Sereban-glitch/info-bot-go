@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"time"
+	"strings"
 
 	"info-bot-go/internal/ai"
 	"info-bot-go/internal/applogin"
@@ -142,6 +143,14 @@ func (s *Server) Start(addr string) error {
 	} else {
 		fileServer := http.FileServer(http.FS(staticFS))
 		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			path := strings.TrimPrefix(r.URL.Path, "/")
+			if path == "" { path = "index.html" }
+			f, err := staticFS.Open(path)
+			if err != nil && !strings.HasPrefix(r.URL.Path, "/api/") {
+				r.URL.Path = "/"
+			} else if err == nil {
+				f.Close()
+			}
 			fileServer.ServeHTTP(w, r)
 		}))
 	}
