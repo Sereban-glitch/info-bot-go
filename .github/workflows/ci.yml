@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           # 1.24 — минимальная версия go.mod (зависимость ledongthuc/pdf
           # для извлечения текста из PDF-вложений требует go >= 1.24.1)
