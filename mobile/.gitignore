@@ -1,0 +1,3 @@
+# www генерится в CI из internal/web/static (переносится скриптом workflow)
+www/
+node_modules/

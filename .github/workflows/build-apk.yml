@@ -1,0 +1,62 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: build-apk
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Підготовка статики міні-застосунку → mobile/www
+        run: |
+          mkdir -p mobile/www
+          cp -r internal/web/static/. mobile/www/
+
+      - name: Capacitor sync
+        working-directory: mobile
+        run: |
+          npm install --no-audit --no-fund --loglevel=error
+          npx cap sync android
+
+      - name: Build APK (assembleDebug)
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon -q assembleDebug
+
+      - name: Перейменування в smart-zapyt.apk
+        run: |
+          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk smart-zapyt.apk
+          ls -la smart-zapyt.apk
+
+      - name: Upload в Releases (тільки тег v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: smart-zapyt.apk
+
+      - name: Upload artifact (для перевірки з будь-якого пуша)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-zapyt-apk
+          path: smart-zapyt.apk
+          if-no-files-found: error
