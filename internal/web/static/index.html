@@ -9,6 +9,19 @@
   <link rel="stylesheet" crossorigin href="/assets/index-B33ba3A0.css">
 <script>
   try {
+       // Force wipe the demo name if it exists in local storage
+       var key = app-builder-workspace;
+       var stateStr = localStorage.getItem(key);
+       if (stateStr && stateStr.includes(Ігорівна)) {
+           var state = JSON.parse(stateStr);
+           if (state && state.state && state.state.profile) {
+               state.state.profile.firstName = ;
+               state.state.profile.lastName = ;
+               state.state.profile.middleName = ;
+           }
+           localStorage.setItem(key, JSON.stringify(state));
+       }
+
     var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
        var u = tg.initDataUnsafe.user;
