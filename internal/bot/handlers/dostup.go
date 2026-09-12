@@ -10,6 +10,7 @@ package handlers
 // → двухшаговая подача (preview + publish) → публичный URL запроса.
 
 import (
+	"info-bot-go/internal/alert"
 	"errors"
 	"fmt"
 	"log"
@@ -577,6 +578,10 @@ func (m *DostupModule) handleSubmit(c tb.Context) error {
 
 	info, err := m.deps.Dostup.SubmitRequest(sess.Draft.DostupSlug, title, data)
 	if err != nil {
+		if errors.Is(err, dostup.ErrNeedsClassification) {
+			alert.UserError(c.Sender().ID, c.Sender().Username, "submit dostup", "Аккаунт Доступ до правди заблокирован! Нужно зайти руками и классифицировать ответы.")
+			return c.Edit("❌ Бот тимчасово не може надсилати нові запити через обмеження порталу «Доступ до правди».\nАдміністратора повідомлено, спробуйте пізніше.")
+		}
 		if errors.Is(err, dostup.ErrRateLimited) {
 			return c.Edit("⏳ Портал обмежив частоту запитів («Забагато запитів»).\nНатисніть кнопку повторно через 3–5 хвилин — чернетка збережена.")
 		}

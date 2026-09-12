@@ -39,6 +39,7 @@ var (
         ErrRateLimited     = errors.New("dostup: сервер вернул 500 (rate limit «Забагато запитів» или баг) — повторите через 3-5 минут")
         ErrBodyNotFound    = errors.New("dostup: распорядитель не найден в каталоге")
         ErrTokenNotFound   = errors.New("dostup: CSRF-токен не найден на странице (протокол сайта изменился?)")
+	ErrNeedsClassification = errors.New("dostup: требуется классификация старых запросов (аккаунт заблокирован)")
         ErrInvalidResponse = errors.New("dostup: неожиданный ответ сервера")
 )
 
@@ -353,6 +354,9 @@ func (c *Client) SubmitRequest(bodySlug, title, text string) (*RequestInfo, erro
         }
         if code != 200 {
                 return nil, fmt.Errorf("dostup: форма запроса: HTTP %d", code)
+        }
+        if strings.Contains(page, "First, did your other requests succeed?") || strings.Contains(page, "Будь ласка, оберіть кожен з цих запитів") {
+                return nil, ErrNeedsClassification
         }
         if isRateLimited(page) {
                 return nil, ErrRateLimited
@@ -778,4 +782,63 @@ func min(a, b int) int {
                 return a
         }
         return b
+}
+
+// ReportStatus — классификация запроса на портале (аналог кнопки
+// «Оновити статус» на /request/<slug>?update_status=1).
+// state — одно из значений Alaveteli: successful, rejected,
+// partially_successful, not_held, waiting_response, error_message и др.
+// Вызывается ТОЛЬКО от имени пользователя (нужна авторизованная сессия):
+// бот не классифицирует ответы сам за человека без спроса.
+func (c *Client) ReportStatus(slug, state string) error {
+	if state == "" {
+		return fmt.Errorf("dostup: пустой статус")
+	}
+	page, code, err := c.getFollow("/request/" + slug + "?update_status=1")
+	if err != nil {
+		return fmt.Errorf("dostup: страница статуса: %w", err)
+	}
+	if code != 200 {
+		return fmt.Errorf("dostup: страница статуса: HTTP %d", code)
+	}
+	// Аккаунт блокирован на классификацию старых ответов — та же защита,
+	// что и при подаче нового запроса.
+	if strings.Contains(page, "First, did your other requests succeed?") ||
+		strings.Contains(page, "Будь ласка, оберіть кожен з цих запитів") {
+		return ErrNeedsClassification
+	}
+	mt := reTokenInput.FindString(page)
+	if mt == "" {
+		return ErrTokenNotFound
+	}
+	mv := reInputValue.FindStringSubmatch(mt)
+	if mv == nil || mv[1] == "" {
+		return ErrTokenNotFound
+	}
+	token := mv[1]
+	form := url.Values{
+		"authenticity_token":              {token},
+		"classification[described_state]": {state},
+		"last_info_request_event_id":      {"0"},
+		"commit":                          {"Оновити статус"},
+	}
+	resp, code, err := c.post("/request/"+slug+"/classifications", form)
+	if err != nil {
+		return fmt.Errorf("dostup: отправка статуса: %w", err)
+	}
+	// Успех: Alaveteli редиректит (302) на страницу запроса.
+	if code == 302 || code == 301 {
+		return nil
+	}
+	if isRateLimited(resp) {
+		return ErrRateLimited
+	}
+	if code != 200 {
+		return fmt.Errorf("dostup: отправка статуса %s: HTTP %d", state, code)
+	}
+	// 200 без редиректа: форма всё ещё на странице — статус не применился.
+	if strings.Contains(resp, "id=\"describe_form_1\"") {
+		return fmt.Errorf("dostup: статус %s не применился (форма осталась)", state)
+	}
+	return nil
 }

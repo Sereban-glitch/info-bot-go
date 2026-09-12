@@ -356,6 +356,9 @@ func (w *DostupSync) syncStatuses(report *strings.Builder) (repliedCount, ackCou
                                 }
                                 log.Printf("[DOSTUP-SYNC] %s: %s (incoming-%s)", slug, dostup.KindLabel(kind), st.LastIncomingID)
                                 w.notifyResponse(e, st)
+                                // Шаг 3: автоклассификация очевидных ответов —
+                                // аккаунт не засоряется, Alaveteli не блокирует.
+                                w.autoclassify(e, st)
                         } else {
                                 // запись уже закрыта ранее — просто зафиксировать id
                                 _ = w.deps.SentLog.UpdateDostupStatus(e.MessageID, st.Status, st.ResponseExcerpt, st.LastIncomingID, true)
@@ -535,6 +538,12 @@ func (w *DostupSync) sendNotifyWithAnalyze(userID int64, text, slug string, with
                         {Unique: "an_pdf", Text: "⬇️ Отримати PDF-вкладення", Data: slug},
                 })
         }
+        // Классификация ответа: кнопки «Оновити статус» прямо из чата —
+        // аккаунт портала не засоряется незакрытыми ответами, а значит
+        // Alaveteli не блокирует подачу новых запросов (Шаг 2 стабилизации).
+        if cls := ClassificationButtons(slug); len(cls) > 0 {
+                rows = append(rows, cls...)
+        }
         kb.InlineKeyboard = rows
         _, err := w.bot.Send(tb.ChatID(target), text, kb, tb.ModeHTML, tb.NoPreview)
         if err != nil {
@@ -619,4 +628,83 @@ func hasPDFName(names []string) bool {
                 }
         }
         return false
+}
+
+// autoclassify — Шаг 3 стабилизации: автоматическая классификация
+// ОЧЕВИДНЫХ ответов органа прямо на портале.
+//
+// Правила безопасности:
+//   - применяем ТОЛЬКО финальные статусы по явным маркерам текста
+//     (SuggestState) или по уверенному вердикту AI (refusal/partial/substantive);
+//   - портал уже знает финальный статус (successful/rejected/...) — не трогаем;
+//   - сомнительные ответы (отписка, авто-подтверждение, неясно) — оставляем
+//     человеку: в уведомлении и так есть кнопки классификации;
+//   - после каждого автоматического действия шлём пользователю пояснение
+//     и кнопки исправления — автопилот НЕ бездумный.
+func (w *DostupSync) autoclassify(e sentlog.SentEntry, st *dostup.RequestStatus) {
+        // Портал уже знает финальный статус? (пользователь сам кликнул на сайте)
+        switch st.Status {
+        case "successful", "rejected", "partially_successful", "not_held",
+                "gone_postal", "error_message", "requires_admin", "user_withdrawn":
+                return
+        }
+        if w.deps.Dostup == nil {
+                return
+        }
+        slug := strings.TrimPrefix(e.MessageID, "dostup:")
+        if slug == "" {
+                return
+        }
+
+        // 1. Rule-based: быстрые явные маркеры, без затрат AI.
+        state := dostup.SuggestState(st.ResponseExcerpt)
+
+        // 2. Если маркеры молчат — спросим AI (уверенные вердикты только).
+        // Полный текст ответа нужен для надёжности вердикта, берём до 8000 рун.
+        if state == "" && w.deps.Gemini != nil && w.deps.Gemini.Available() {
+                fullText, err := w.deps.Dostup.GetRequestResponseText(slug, 8000)
+                if err == nil && strings.TrimSpace(fullText) != "" {
+                        organ := e.DostupBody
+                        if organ == "" {
+                                organ = e.RecipientName
+                        }
+                        verdict, vErr := w.deps.Gemini.AnalyzeRefusalVerdict(organ, e.Subject, fullText, nil)
+                        if vErr == nil && verdict != nil {
+                                state = dostup.AIStateToDostup(verdict.Type)
+                                log.Printf("[DOSTUP-SYNC] %s: AI вердикт=%s -> %s", slug, verdict.Type, state)
+                        }
+                }
+        }
+
+        if state == "" {
+                return // не уверены — оставляем кнопки человеку
+        }
+
+        // 3. Применяем на портале.
+        if err := w.deps.Dostup.ReportStatus(slug, state); err != nil {
+                log.Printf("[DOSTUP-SYNC] автоклассификация %s=%s: %v", slug, state, err)
+                return
+        }
+        // 4. Фиксируем в sentlog и шлём пояснение с кнопками исправления.
+        _ = w.deps.SentLog.UpdateDostupStatus(e.MessageID, state, st.ResponseExcerpt, st.LastIncomingID, true)
+        log.Printf("[DOSTUP-SYNC] %s: авто-классификация -> %s", slug, state)
+
+        organ := e.DostupBody
+        if organ == "" {
+                organ = e.RecipientName
+        }
+        text := fmt.Sprintf("🤖 <b>Статус запросу оновлено автоматично</b>\n\n"+
+                "🏛 <b>%s</b>\n"+
+                "📂 «%s»\n\n"+
+                "Бот позначив відповідь як: <b>%s</b>\n"+
+                "Якщо класифікація неточна — обери правильний статус кнопкою нижче.", 
+                htmlEscape(organ), htmlEscape(e.Subject), dostup.StatusLabel(state))
+        if cls := ClassificationButtons(slug); len(cls) > 0 {
+                kb := &tb.ReplyMarkup{InlineKeyboard: cls}
+                if _, err := w.bot.Send(tb.ChatID(e.UserID), text, kb, tb.ModeHTML, tb.NoPreview); err != nil {
+                        log.Printf("[DOSTUP-SYNC] авто-классификация user=%d: %v", e.UserID, err)
+                }
+        } else {
+                w.sendNotify(e.UserID, text)
+        }
 }
