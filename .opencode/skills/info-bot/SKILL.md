@@ -54,6 +54,10 @@ curl -s https://api.github.com/repos/Sereban-glitch/info-bot-go/releases/tags/v1
 
 Механика: `ci.yml` (пуш в main: vet+test+build на Go 1.24) и `release.yml` (тег `v*`: бинарники linux/darwin × amd64/arm64 в Releases) — это и есть бэкап версии на GitHub. Секреты не попадут: `.env`, `.dostup_session.json`, `*.bak*` в .gitignore.
 
+### Авто-деплой (zero-touch)
+
+Workflow `.github/workflows/deploy.yml`: пуш в `main` → сборка на GitHub Actions (Go 1.24, `-ldflags="-s -w"`) → ssh-деплой на ВМ (секрет `SSH_DEPLOY_KEY`, пользователь `u0_a566`, хост 35.209.212.217) → замена бинарника + `systemctl restart`. Откат: бинарник в GitHub Releases или из архива `/home/archi/backups-info-bot-20260912.tar.gz`. Заметка: бинарник деплоится в `/home/u0_a566/info-bot-new` (не в /tmp — там root-owned файлы блокируют перезапись), затем `sudo cp` на место и `rm` из home.
+
 ## Интеграция с Alaveteli (dostup.org.ua) — добытые знания
 
 Код: `internal/dostup/client.go`, `classify.go`, `suggest.go`; бот-часть: `internal/bot/handlers/dostup.go`, `dostupsync.go`, `classify.go`.
