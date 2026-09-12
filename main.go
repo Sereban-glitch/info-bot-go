@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"info-bot-go/internal/applogin"
 	"info-bot-go/internal/bot"
 	"info-bot-go/internal/config"
 	"info-bot-go/internal/directory"
@@ -76,7 +77,8 @@ func main() {
 	}
 
 	// Initialize and start the bot
-	b, err := bot.New(cfg, sessStore, sentLog, globalStats, watcher)
+	appLogin := applogin.New()
+	b, err := bot.New(cfg, sessStore, sentLog, globalStats, watcher, appLogin)
 	if err != nil {
 		log.Fatalf("bot init: %v", err)
 	}
@@ -86,6 +88,7 @@ func main() {
 	// в журнале строкой [FATAL] web, процесс завершает работу с кодом 1,
 	// и systemd (Restart=always) поднимает его заново.
 	webServer := web.NewServer(cfg, sessStore, sentLog, b.Rotator(), dir)
+	webServer.SetAppLogin(appLogin)
 	// Канал портала: рейтинги органов + поиск по публичным запросам
 	webServer.SetDostup(b.Dostup(), b.DostupCatalog(), b.DostupRatings())
 	// Монетизация Stars (каркас, выключена по умолчанию)

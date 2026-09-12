@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"info-bot-go/internal/ai"
+	"info-bot-go/internal/applogin"
 	"info-bot-go/internal/config"
 	"info-bot-go/internal/directory"
 	"info-bot-go/internal/dostup"
@@ -34,6 +35,7 @@ type Server struct {
 	stars        *stars.Store                // балансы кредитов монетизации (nil = бесплатно)
 	starsClient  *stars.Client               // создание инвойс-ссылок Bot API
 	analyzeUsers *ratelimiter.KeyRateLimiter // часовой лимит бесплатных розборов (6/час на пользователя)
+	appLogin     *applogin.Store             // коды входа в нативний застосунок (nil = вимкнено)
 }
 
 // NewServer creates a new web server.
@@ -60,6 +62,12 @@ func (s *Server) SetDostup(client *dostup.Client, catalog *dostup.CatalogStore, 
 	s.dostup = client
 	s.catalog = catalog
 	s.ratings = ratings
+}
+
+// SetAppLogin подключает хранилище кодов входа в нативный застосунок.
+// nil — эндпоинт /api/app/auth отвечает 503.
+func (s *Server) SetAppLogin(store *applogin.Store) {
+	s.appLogin = store
 }
 
 // SetStars подключает монетизацию: хранилище кредитов и клиент Bot API.
@@ -106,6 +114,10 @@ func (s *Server) Start(addr string) error {
 	// Монетизация Stars (каркас): статус/баланс + создание инвойс-ссылки.
 	mux.HandleFunc("/api/stars/status", s.corsMiddleware(aut(s.authMiddleware(s.handleStarsStatus))))
 	mux.HandleFunc("/api/stars/invoice", s.corsMiddleware(anl(s.authMiddleware(s.handleStarsInvoice))))
+
+	// Вход в нативный застосунок: одноразовый код из бота (/login) →
+	// подписанный initData (без Telegram внутри WebView).
+	mux.HandleFunc("/api/app/auth", s.corsMiddleware(aut(s.handleAppAuth)))
 
 	// Static files (mini-app HTML)
 	staticFS, err := fs.Sub(staticFiles, "static")

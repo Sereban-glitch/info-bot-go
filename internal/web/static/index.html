@@ -238,6 +238,45 @@ small { font-size: 13px; color: var(--tg-hint); }
 }
 
 /* ============================================
+   APP LOGIN (вхід з кодом у нативному застосунку)
+   ============================================ */
+.app-login-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  display: none; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(4, 6, 10, 0.72);
+  backdrop-filter: blur(6px);
+}
+.app-login-overlay.show { display: flex; }
+.app-login-card {
+  width: 100%; max-width: 340px;
+  background: var(--tg-card);
+  border: 1px solid var(--tg-border);
+  border-radius: 16px;
+  padding: 22px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+}
+.app-login-card h3 { margin: 0 0 6px; font-size: 17px; }
+.app-login-card p { margin: 0 0 14px; font-size: 12.5px; color: var(--tg-hint); line-height: 1.45; }
+.app-login-input {
+  width: 100%; box-sizing: border-box;
+  padding: 12px; font-size: 17px; letter-spacing: 4px; text-align: center;
+  background: var(--tg-secondary-bg); color: var(--tg-text);
+  border: 1px solid var(--tg-border); border-radius: 10px;
+  outline: none;
+}
+.app-login-input:focus { border-color: var(--tg-button); }
+.app-login-btn {
+  width: 100%; margin-top: 12px; padding: 12px;
+  font-size: 14px; font-weight: 700;
+  color: var(--tg-button-text);
+  background: var(--tg-button);
+  border: none; border-radius: 10px; cursor: pointer;
+}
+.app-login-btn:disabled { opacity: 0.6; }
+.app-login-help { margin-top: 12px; font-size: 11.5px; color: var(--tg-hint); text-align: center; line-height: 1.5; }
+
+/* ============================================
    TAB BAR (BOTTOM) — Glassmorphism Dark
    ============================================ */
 .tab-bar {
@@ -1111,6 +1150,8 @@ small { font-size: 13px; color: var(--tg-hint); }
 
   <a class="profile-edit-link" style="color:var(--tg-destructive);" onclick="deleteMyData()">🗑 Видалити мої дані</a>
 
+  <a class="profile-edit-link" id="app-logout-link" style="display:none; color:var(--tg-hint);" onclick="appLogout()">↩ Вийти з застосунку (змінити акаунт)</a>
+
   <div class="stats-row" style="margin-top:var(--spacing);">
     <div class="stat-card">
       <div class="stat-number" style="color:var(--tg-button)" id="profile-stat-total">0</div>
@@ -1209,6 +1250,15 @@ small { font-size: 13px; color: var(--tg-hint); }
   <div class="rating-footnote" id="rating-footnote"></div>
 </div>
 
+<div class="app-login-overlay" id="app-login-overlay">
+  <div class="app-login-card">
+    <h3>🔑 Вхід у застосунок</h3>
+    <p>У боті натисніть <b>/login</b> — отримаєте одноразовий код (діє 30 хв). Введіть його нижче, щоб підтягнути ваш профіль і запити.</p>
+    <input class="app-login-input" id="app-login-code" inputmode="numeric" maxlength="6" placeholder="••••••" autocomplete="one-time-code">
+    <button class="app-login-btn" id="app-login-btn" onclick="appLoginSubmit()">Увійти</button>
+    <div class="app-login-help">Код можна отримати лише з особистого чату з ботом.</div>
+  </div>
+</div>
 <!-- ===================== TAB BAR ===================== -->
 <div class="apk-banner" id="apk-banner">
   <span class="a-icon">📲</span>
@@ -1250,7 +1300,10 @@ small { font-size: 13px; color: var(--tg-hint); }
 // API_BASE: empty = same origin (served by Go bot directly)
 // Set window.__API_BASE__ before this script or change below for Vercel deployment
 // API_BASE: empty = use Vercel rewrite (same-origin, no mixed content)
-    const API_BASE = window.location.pathname.startsWith('/prozoro') ? '/prozoro' : (window.__API_BASE__ || '');
+// В нативному застосунку (Capacitor) сторінка живе в локальному WebView —
+// API б'ємо на бекенд за абсолютним адресом.
+const APP_SERVER = 'https://35-209-212-217.sslip.io';
+    const API_BASE = (window.Capacitor && window.Capacitor.isNativePlatform()) ? APP_SERVER : (window.location.pathname.startsWith('/prozoro') ? '/prozoro' : (window.__API_BASE__ || ''));
 
 /* ============================================
    TELEGRAM WEBAPP INIT
@@ -1280,6 +1333,67 @@ function dismissApkBanner() {
   try { localStorage.setItem('apkBannerHidden', '1'); } catch (e) {}
   const b = document.getElementById('apk-banner');
   if (b) b.classList.remove('show');
+}
+
+/* ============================================
+   APP LOGIN — нативный застосунок без Telegram
+   Telegram-API в WebView немає, тому авторизуємось
+   одноразовим кодом з бота (/login). Сервер підписує
+   initData тим самим ключем — всі /api/* працюють.
+   ============================================ */
+const inCapacitor = window.Capacitor && window.Capacitor.isNativePlatform();
+let appInitData = '';
+try {
+  appInitData = localStorage.getItem('smartzapyt_init_data') || '';
+} catch (e) { appInitData = ''; }
+
+function ensureAppLogin() {
+  if (!inCapacitor) return;
+  if (appInitData) return;
+  const ov = document.getElementById('app-login-overlay');
+  if (ov && !ov.classList.contains('show')) ov.classList.add('show');
+}
+function hideAppLogin() {
+  const ov = document.getElementById('app-login-overlay');
+  if (ov) ov.classList.remove('show');
+}
+async function appLoginSubmit() {
+  const inp = document.getElementById('app-login-code');
+  const btn = document.getElementById('app-login-btn');
+  const code = (inp.value || '').trim();
+  if (!code) { showToast('Введіть код'); return; }
+  if (btn) { btn.disabled = true; }
+  try {
+    const resp = await fetch(API_BASE + '/api/app/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code })
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok || !data.data || !data.data.init_data) {
+      showToast('Невірний або прострочений код — отримайте новий через /login');
+      if (inp) { inp.value = ''; inp.focus(); }
+      return;
+    }
+    appInitData = data.data.init_data;
+    try { localStorage.setItem('smartzapyt_init_data', appInitData); } catch (e) {}
+    hideAppLogin();
+    showToast('✅ Вхід виконано — вітаємо!');
+    const active = document.querySelector('.tab-bar-item.active');
+    const tab = active ? active.getAttribute('data-tab') : 'overview';
+    if (tab === 'profile') loadProfile();
+loadOverview();
+ensureAppLogin();
+  } catch (e) {
+    showToast('Помилка мережі — спробуйте ще раз');
+  } finally {
+    if (btn) { btn.disabled = false; }
+  }
+}
+function appLogout() {
+  appInitData = '';
+  try { localStorage.removeItem('smartzapyt_init_data'); } catch (e) {}
+  location.reload();
 }
 
 /* ============================================
@@ -1548,16 +1662,18 @@ async function loadAnalytics(force) {
    ============================================ */
 async function apiCall(path, options = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  // Auth: signed initData only (HMAC-validated server-side).
-  // user_id / X-User-ID fallbacks removed — server rejects unsigned identifiers.
-  if (tg && tg.initData) {
-    headers['X-Init-Data'] = tg.initData;
+  // Auth: подписанный initData (HMAC-валидация на сервере).
+  // В Telegram — нативный initData, в застосунке — подписанный сервером
+  // по коду входа (см. APP LOGIN выше). Без подписи сервер 401.
+  const authData = (tg && tg.initData) || appInitData;
+  if (authData) {
+    headers['X-Init-Data'] = authData;
   }
   // Build URL with the same signed initData as a query param
   let url = API_BASE + path;
   const params = [];
-  if (tg && tg.initData) {
-    params.push('init_data=' + encodeURIComponent(tg.initData));
+  if (authData) {
+    params.push('init_data=' + encodeURIComponent(authData));
   }
   if (params.length > 0) {
     url += (url.includes('?') ? '&' : '?') + params.join('&');
@@ -1568,6 +1684,10 @@ async function apiCall(path, options = {}) {
     const data = await resp.json();
     if (!data.ok) {
       console.error('API error:', data.error, path);
+      // В застосунку без сессии — просим код входа (/login у боті)
+      if (resp.status === 401 && inCapacitor) {
+        ensureAppLogin();
+      }
       return null;
     }
     return data.data;
@@ -2056,11 +2176,17 @@ async function loadProfile() {
     avatar.textContent = profile.firstName.charAt(0).toUpperCase();
   }
 
-  // Stats
+  // Статистика
   const stats = await apiCall('/api/stats');
   if (stats) {
     document.getElementById('profile-stat-total').textContent = stats.total || 0;
     document.getElementById('profile-stat-replied').textContent = stats.replied || 0;
+  }
+
+  // В застосунку (без Telegram) показываем вихід з акаунта
+  const logoutLink = document.getElementById('app-logout-link');
+  if (logoutLink) {
+    logoutLink.style.display = (inCapacitor && appInitData) ? 'block' : 'none';
   }
 }
 

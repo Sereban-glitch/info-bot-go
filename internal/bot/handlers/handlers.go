@@ -7,6 +7,7 @@ import (
 	tb "gopkg.in/telebot.v3"
 
 	"info-bot-go/internal/ai"
+	"info-bot-go/internal/applogin"
 	"info-bot-go/internal/config"
 	"info-bot-go/internal/directory"
 	"info-bot-go/internal/dostup"
@@ -42,7 +43,8 @@ type Deps struct {
 	// (портал мог принять запрос). Синхронизация ищет автора среди них,
 	// прежде чем приписывать «чужой» запрос владельцу. Может быть nil.
 	PendingSubmits *PendingSubmits
-	Stars          *stars.Store // балансы кредитов монетизации (nil = бесплатно)
+	Stars          *stars.Store    // балансы кредитов монетизации (nil = бесплатно)
+	AppLogin       *applogin.Store // одноразовые коды входа в нативный застосунок (nil = выкл)
 }
 
 type (
@@ -95,6 +97,7 @@ func AllModules(deps *Deps) []Module {
 	classifyMod := NewClassifyModule(deps)
 	moderationMod := NewModerationModule(deps)
 	apkMod := NewApkModule(deps)
+	appLoginMod := NewAppLoginModule(deps)
 
 	voiceMod.SetBugReportModule(bugReportMod)
 	analyzeMod.SetStarsModule(starsMod)
@@ -135,6 +138,7 @@ func AllModules(deps *Deps) []Module {
 		moderationMod,
 		classifyMod,
 		apkMod,
+		appLoginMod,
 	}
 }
 
