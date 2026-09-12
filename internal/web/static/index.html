@@ -203,6 +203,41 @@ small { font-size: 13px; color: var(--tg-hint); }
 }
 
 /* ============================================
+   APK BANNER (Android: встановити застосунок)
+   ============================================ */
+.apk-banner {
+  position: fixed; bottom: calc(var(--tab-height) + 8px);
+  left: 12px; right: 12px; z-index: 900;
+  background: var(--tg-card);
+  border: 1px solid var(--tg-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 10px 12px;
+  display: none;
+  align-items: center; gap: 10px;
+  animation: fadeIn 0.3s var(--ease-out);
+}
+.apk-banner.show { display: flex; }
+.apk-banner .a-icon { font-size: 22px; line-height: 1; }
+.apk-banner .a-text { flex: 1; font-size: 12.5px; line-height: 1.35; }
+.apk-banner .a-link {
+  flex-shrink: 0;
+  background: var(--tg-button);
+  color: var(--tg-button-text);
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-size: 12.5px; font-weight: 700;
+  text-decoration: none;
+}
+.apk-banner .a-close {
+  flex-shrink: 0;
+  background: none; border: none;
+  color: var(--tg-hint);
+  font-size: 16px; cursor: pointer;
+  padding: 2px 4px;
+}
+
+/* ============================================
    TAB BAR (BOTTOM) — Glassmorphism Dark
    ============================================ */
 .tab-bar {
@@ -1175,6 +1210,12 @@ small { font-size: 13px; color: var(--tg-hint); }
 </div>
 
 <!-- ===================== TAB BAR ===================== -->
+<div class="apk-banner" id="apk-banner">
+  <span class="a-icon">📲</span>
+  <span class="a-text">Смарт Запит: встановіть застосунок — панель запитів на вашому екрані.</span>
+  <a class="a-link" href="https://github.com/Sereban-glitch/info-bot-go/releases/latest/download/smart-zapyt.apk" target="_blank" rel="noopener">Завантажити</a>
+  <button class="a-close" onclick="dismissApkBanner()" aria-label="Закрити">✕</button>
+</div>
 <div class="tab-bar" id="tab-bar">
   <button class="tab-bar-item active" data-tab="overview" onclick="switchTab('overview')">
     <span class="tab-icon">📊</span>
@@ -1219,6 +1260,26 @@ if (tg) {
   tg.ready();
   tg.expand();
   tg.enableClosingConfirmation();
+}
+initApkBanner();
+
+/* APK install banner: только Android, вне Capacitor,
+   и пока пользователь его не закрыл (localStorage).
+   Внутри самого приложения баннер не нужен — это приложение и есть. */
+function initApkBanner() {
+  try {
+    const isAndroid = tg && tg.platform === 'android';
+    const inCapacitor = window.Capacitor && window.Capacitor.isNativePlatform();
+    if (!isAndroid || inCapacitor) return;
+    if (localStorage.getItem('apkBannerHidden') === '1') return;
+    const b = document.getElementById('apk-banner');
+    if (b) b.classList.add('show');
+  } catch (e) { /* никогда не роняем мини-застосунок */ }
+}
+function dismissApkBanner() {
+  try { localStorage.setItem('apkBannerHidden', '1'); } catch (e) {}
+  const b = document.getElementById('apk-banner');
+  if (b) b.classList.remove('show');
 }
 
 /* ============================================

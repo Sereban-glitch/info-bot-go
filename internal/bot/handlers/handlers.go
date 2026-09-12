@@ -94,6 +94,7 @@ func AllModules(deps *Deps) []Module {
 	digestMod := NewDigestModule(deps)
 	classifyMod := NewClassifyModule(deps)
 	moderationMod := NewModerationModule(deps)
+	apkMod := NewApkModule(deps)
 
 	voiceMod.SetBugReportModule(bugReportMod)
 	analyzeMod.SetStarsModule(starsMod)
@@ -133,6 +134,7 @@ func AllModules(deps *Deps) []Module {
 		digestMod,
 		moderationMod,
 		classifyMod,
+		apkMod,
 	}
 }
 
