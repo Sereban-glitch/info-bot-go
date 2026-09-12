@@ -1,0 +1,62 @@
+name: Deploy to VM
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Build linux-amd64
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          go build -ldflags="-s -w" -o info-bot-linux-amd64 .
+          ls -la info-bot-linux-amd64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: info-bot-linux-amd64
+          path: info-bot-linux-amd64
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      VM_HOST: 35.209.212.217
+      VM_USER: u0_a566
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: info-bot-linux-amd64
+          path: artifact
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_DEPLOY_KEY }}
+      - name: Deploy binary and restart service
+        run: |
+          chmod +x artifact/info-bot-linux-amd64
+          scp -o StrictHostKeyChecking=accept-new artifact/info-bot-linux-amd64 \
+              ${{ env.VM_USER }}@${{ env.VM_HOST }}:/tmp/info-bot-new
+          ssh ${{ env.VM_USER }}@${{ env.VM_HOST }} \
+              'sudo systemctl stop info-bot.service && \
+               sudo cp /tmp/info-bot-new /home/archi/info-bot/info-bot && \
+               sudo chmod +x /home/archi/info-bot/info-bot && \
+               sudo systemctl start info-bot.service && \
+               sleep 2 && sudo systemctl is-active info-bot.service && \
+               sudo tail -3 /home/archi/info-bot/logs/bot.log'
