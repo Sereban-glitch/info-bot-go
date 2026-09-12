@@ -5,45 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Smart Zapyt</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="module" crossorigin src="/assets/index-CEc8r_Ot.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-B33ba3A0.css">
-<script>
-  try {
-       // Force wipe the demo name if it exists in local storage
-       var key = app-builder-workspace;
-       var stateStr = localStorage.getItem(key);
-       if (stateStr && stateStr.includes(Ігорівна)) {
-           var state = JSON.parse(stateStr);
-           if (state && state.state && state.state.profile) {
-               state.state.profile.firstName = ;
-               state.state.profile.lastName = ;
-               state.state.profile.middleName = ;
-           }
-           localStorage.setItem(key, JSON.stringify(state));
-       }
-
-    var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-    if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-       var u = tg.initDataUnsafe.user;
-       var key = app-builder-workspace;
-       var stateStr = localStorage.getItem(key);
-       var state = stateStr ? JSON.parse(stateStr) : {state: {profile: {}}};
-       if (!state.state) state.state = {};
-       if (!state.state.profile) state.state.profile = {};
-       
-       // Update name only if it is empty or we haven"t saved a custom one
-       state.state.profile.firstName = u.first_name || ;
-       state.state.profile.lastName = u.last_name || ;
-       state.state.profile.middleName = ;
-       
-       // Wipe demo requests so they don"t flicker
-       if (state.state.requests && state.state.requests.length > 0 && state.state.requests[0].subject === Щодо ремонту дороги) {
-           state.state.requests = [];
-       }
-       localStorage.setItem(key, JSON.stringify(state));
-    }
-  } catch(e) { console.error(e); }
-</script>
+  <script type="module" crossorigin src="/assets/index-D1QnGh0q.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BKvN44x6.css">
 </head>
 <body>
   <div id="root"></div>
