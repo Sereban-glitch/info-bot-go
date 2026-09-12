@@ -2667,26 +2667,50 @@ async function sendFollowUp(slug) {
   } catch (e) { showToast("Помилка з’єднання"); }
 }
 
-function downloadDoc(slug) {
-  const r = (cachedRequests || []).find(x => (x.id || "") === "dostup:" + slug);
-  if (!r) { showToast("Запит не знайдено"); return; }
-  const html = `<!DOCTYPE html><html lang="uk"><head><meta charset="utf-8"><title>Запит — ${escHtml(r.subject)}</title></head>`
-    + `<body style="font-family:sans-serif;max-width:700px;margin:20px auto;line-height:1.6;">`
-    + `<h1>Інформаційний запит</h1>`
-    + `<p><b>Орган:</b> ${escHtml(r.recipientName || "")}</p>`
-    + `<p><b>Тема:</b> ${escHtml(r.subject || "")}</p>`
-    + `<p><b>Дата подання:</b> ${escHtml(r.date || "")}</p>`
-    + `<p><b>Статус:</b> ${escHtml(r.status || "")}</p>`
-    + (r.url ? `<p><b>Посилання:</b> <a href="${escHtml(r.url)}">${escHtml(r.url)}</a></p>` : "")
-    + (r.responseExcerpt ? `<h2>Відповідь органу</h2><p>${escHtml(r.responseExcerpt)}</p>` : "")
-    + `<hr><p style="font-size:12px;color:#888;">Сформовано застосунком Smart Zapyt • портал «Доступ до правди»</p>`
-    + `</body></html>`;
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "zapyt-" + slug + ".html";
-  document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+function buildDocText(r) {
+  const L = [];
+  L.push("ІНФОРМАЦІЙНИЙ ЗАПИТ");
+  L.push("Орган: " + (r.recipientName || ""));
+  L.push("Тема: " + (r.subject || ""));
+  L.push("Дата подання: " + (r.date || ""));
+  L.push("Статус: " + (r.status || ""));
+  if (r.url) L.push("Посилання: " + r.url);
+  if (r.responseExcerpt) L.push("Відповідь органу: " + r.responseExcerpt);
+  L.push("— Сформовано застосунком Smart Zapyt, портал «Доступ до правди»");
+  return L.join("\n");
+}
+
+async function downloadDoc(slug) {
+  try {
+    const r = (cachedRequests || []).find(x => (x.id || "") === "dostup:" + slug);
+    if (!r) { showToast("Запит не знайдено"); return; }
+    if (inCapacitor && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Share) {
+      await window.Capacitor.Plugins.Share.share({
+        title: "Запит — " + (r.subject || ""),
+        text: buildDocText(r),
+        dialogTitle: "Поділитися документом",
+      });
+      return;
+    }
+    const html = `<!DOCTYPE html><html lang="uk"><head><meta charset="utf-8"><title>Запит — ${escHtml(r.subject)}</title></head>`
+      + `<body style="font-family:sans-serif;max-width:700px;margin:20px auto;line-height:1.6;">`
+      + `<h1>Інформаційний запит</h1>`
+      + `<p><b>Орган:</b> ${escHtml(r.recipientName || "")}</p>`
+      + `<p><b>Тема:</b> ${escHtml(r.subject || "")}</p>`
+      + `<p><b>Дата подання:</b> ${escHtml(r.date || "")}</p>`
+      + `<p><b>Статус:</b> ${escHtml(r.status || "")}</p>`
+      + (r.url ? `<p><b>Посилання:</b> <a href="${escHtml(r.url)}">${escHtml(r.url)}</a></p>` : "")
+      + (r.responseExcerpt ? `<h2>Відповідь органу</h2><p>${escHtml(r.responseExcerpt)}</p>` : "")
+      + `<hr><p style="font-size:12px;color:#888;">Сформовано застосунком Smart Zapyt • портал «Доступ до правди»</p>`
+      + `</body></html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "zapyt-" + slug + ".html";
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    showToast("✅ Документ збережено");
+  } catch (e) { showToast("Не вдалося сформувати документ"); }
 }
 
 /* SSE-стрічка: живі оновлення без перезавантаження */
