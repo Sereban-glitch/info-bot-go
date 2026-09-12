@@ -10,6 +10,9 @@ concurrency:
   group: build-apk
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   apk:
     runs-on: ubuntu-latest
