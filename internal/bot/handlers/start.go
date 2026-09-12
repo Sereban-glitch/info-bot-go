@@ -287,6 +287,7 @@ func MainMenuKeyboard(cfg *config.Config, userID int64) *tb.ReplyMarkup {
                 kb.Row(kb.Text("🔍 Розбір відповіді")),
                 kb.Row(kb.Text("📨 Мої запити"), kb.Text("📊 Статистика")),
                 kb.Row(kb.WebApp("🚪 Прозоро", &tb.WebApp{URL: cfg.MiniAppURL})),
+		kb.Row(kb.Text("📲 Встановити застосунок")),
                 kb.Row(kb.Text("📞 Гарячі лінії"), kb.Text("👤 Мій профіль"), kb.Text("ℹ️ Довідка")),
                 kb.Row(kb.Text("🐞 Повідомити про помилку"), kb.Text("🌟 Підтримати проект")),
         }

@@ -58,7 +58,7 @@ func (m *ApkModule) handleApk(c tb.Context) error {
 		return m.sendFallback(c)
 	}
 
-	return c.Send("Android: відкрийте отриманий файл і дозвольте встановлення з невідомих джерел. iOS: застосунок не підтримується — користуйтесь міні-застосунком у Telegram.")
+	return c.Send("✅ Файл вище — застосунок \u00abСмарт Запит\u00bb.\n\n1\ufe0f⃣ Відкрийте файл smart-zapyt.apk\n2\ufe0f⃣ Дозвольте встановлення з невідомих джерел (система сама запитає)\n3\ufe0f⃣ Відкрийте застосунок і увійдіть кодом з бота: команда /login\n\niOS не підтримується \u2014 користуйтесь міні-застосунком \U0001f6aa Прозоро.")
 }
 
 func (m *ApkModule) sendFallback(c tb.Context) error {

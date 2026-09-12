@@ -344,7 +344,7 @@ var menuLabels = map[string]bool{
 	"🐞 Повідомити про помилку": true, "👤 Мій профіль": true,
 	"💳 Купити розбори": true, "💾 Бекап проєкту": true, "📊 Статистика": true,
 	"📚 Шаблони": true, "📝 Новий запит": true, "📞 Гарячі лінії": true,
-	"📨 Мої запити": true, "🔍 Розбір відповіді": true,
+	"📨 Мої запити": true, "📲 Встановити застосунок": true, "🔍 Розбір відповіді": true,
 }
 
 func (b *Bot) sessionMiddleware() tb.MiddlewareFunc {
