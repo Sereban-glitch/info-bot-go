@@ -52,11 +52,12 @@ jobs:
         run: |
           chmod +x artifact/info-bot-linux-amd64
           scp -o StrictHostKeyChecking=accept-new artifact/info-bot-linux-amd64 \
-              ${{ env.VM_USER }}@${{ env.VM_HOST }}:/tmp/info-bot-new
+              ${{ env.VM_USER }}@${{ env.VM_HOST }}:/home/${{ env.VM_USER }}/info-bot-new
           ssh ${{ env.VM_USER }}@${{ env.VM_HOST }} \
               'sudo systemctl stop info-bot.service && \
-               sudo cp /tmp/info-bot-new /home/archi/info-bot/info-bot && \
+               sudo cp /home/${{ env.VM_USER }}/info-bot-new /home/archi/info-bot/info-bot && \
                sudo chmod +x /home/archi/info-bot/info-bot && \
+               sudo rm -f /home/${{ env.VM_USER }}/info-bot-new && \
                sudo systemctl start info-bot.service && \
                sleep 2 && sudo systemctl is-active info-bot.service && \
                sudo tail -3 /home/archi/info-bot/logs/bot.log'
