@@ -116,6 +116,7 @@ func (s *Server) Start(addr string) error {
 	mux.HandleFunc("/api/directory", s.corsMiddleware(aut(s.authMiddleware(s.handleDirectory))))
 	mux.HandleFunc("/api/stats", s.corsMiddleware(aut(s.authMiddleware(s.handleStats))))
 	mux.HandleFunc("/api/generate-template", s.corsMiddleware(gen(s.authMiddleware(s.handleGenerateTemplate))))
+	mux.HandleFunc("/api/portal-stats", s.corsMiddleware(pub(s.handlePortalStats))) // публичный: агрегаты портала без ПД
 	mux.HandleFunc("/api/rating", s.corsMiddleware(pub(s.handleRating)))       // публичный: агрегаты без ПД
 	mux.HandleFunc("/api/analytics", s.corsMiddleware(pub(s.handleAnalytics))) // публичный: темы запросов, агрегаты без ПД (ТЗ №9)
 	mux.HandleFunc("/api/body-stats", s.corsMiddleware(aut(s.authMiddleware(s.handleBodyStats))))

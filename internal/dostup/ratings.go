@@ -334,3 +334,40 @@ func (s *RatingsStore) LatestFetch() time.Time {
 	s.mu.RUnlock()
 	return latest
 }
+
+// AggregateStats — суммарна статистика по всьому каталогу порталу.
+type AggregateStats struct {
+	Requests   int       `json:"requests"`
+	Successful int       `json:"successful"`
+	Overdue    int       `json:"overdue"`
+	NotHeld    int       `json:"notHeld"`
+	Organs     int       `json:"organs"`
+	WithData   int       `json:"withData"`
+	FetchedAt  time.Time `json:"fetchedAt,omitempty"`
+}
+
+// Aggregate підсумовує лічильники по всіх органах каталогу.
+func (s *RatingsStore) Aggregate() AggregateStats {
+	if s == nil {
+		return AggregateStats{}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var a AggregateStats
+	var latest time.Time
+	for _, e := range s.entries {
+		a.Requests += e.Stats.Requests
+		a.Successful += e.Stats.Successful
+		a.Overdue += e.Stats.Overdue
+		a.NotHeld += e.Stats.NotHeld
+		if e.Stats.Requests > 0 {
+			a.WithData++
+		}
+		if e.FetchedAt.After(latest) {
+			latest = e.FetchedAt
+		}
+	}
+	a.Organs = len(s.entries)
+	a.FetchedAt = latest
+	return a
+}

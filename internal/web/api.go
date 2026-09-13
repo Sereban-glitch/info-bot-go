@@ -614,6 +614,24 @@ func (s *Server) handleRating(w http.ResponseWriter, r *http.Request) {
         writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: resp})
 }
 
+// handlePortalStats — GET /api/portal-stats: публічні агрегати порталу
+// (суми по всьому каталогу, нуль персональних даних).
+func (s *Server) handlePortalStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{OK: false, Err: "method not allowed"})
+		return
+	}
+	if s.ratings == nil {
+		writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: dostup.AggregateStats{}})
+		return
+	}
+	a := s.ratings.Aggregate()
+	if !a.FetchedAt.IsZero() {
+		a.FetchedAt = a.FetchedAt.UTC()
+	}
+	writeJSON(w, http.StatusOK, APIResponse{OK: true, Data: a})
+}
+
 // handleBodyStats — GET /api/body-stats?name=<орган>: рейтинг ответов органа.
 func (s *Server) handleBodyStats(w http.ResponseWriter, r *http.Request) {
         if r.Method != http.MethodGet {
