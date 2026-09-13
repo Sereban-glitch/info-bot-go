@@ -68,10 +68,11 @@ type FollowUpDraft struct {
 type AnalyzeDraft struct {
 	Organ        string `json:"organ,omitempty"`        // орган-распорядитель
 	Subject      string `json:"subject,omitempty"`      // тема исходного запроса
-	RequestSlug  string `json:"requestSlug,omitempty"`  // гилка на портале (если ответ оттуда)
-	URL          string `json:"url,omitempty"`          // публичная ссылка на гилку
-	ReplyText    string `json:"replyText,omitempty"`    // текст ответа органа
-	NextStep     string `json:"nextStep,omitempty"`     // clarification|complaint|appeal|none
+	RequestSlug  string   `json:"requestSlug,omitempty"`  // гилка на портале (если ответ оттуда)
+	URL          string   `json:"url,omitempty"`          // публичная ссылка на гилку
+	ReplyText    string   `json:"replyText,omitempty"`    // текст ответа органа
+	PDFScans     [][]byte `json:"pdfScans,omitempty"`     // сканы PDF
+	NextStep     string   `json:"nextStep,omitempty"`     // clarification|complaint|appeal|none
 	DraftSubject string `json:"draftSubject,omitempty"` // тема готового документа
 	DraftBody    string `json:"draftBody,omitempty"`    // текст готового документа
 }

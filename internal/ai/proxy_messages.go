@@ -349,6 +349,39 @@ func contentsHasAudio(contents []interface{}) bool {
 	return false
 }
 
+// contentsHasPDF — проверяет наличие PDF-вложений.
+func contentsHasPDF(contents []interface{}) bool {
+	for _, cItf := range contents {
+		cm, ok := cItf.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		var inner []interface{}
+		switch p := cm["parts"].(type) {
+		case []interface{}:
+			inner = p
+		case []map[string]string:
+			continue // только текст
+		}
+		for _, pItf := range inner {
+			pm, ok := pItf.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			mime := ""
+			if inl, ok := pm["inlineData"].(map[string]string); ok {
+				mime = inl["mimeType"]
+			} else if inlAny, ok := pm["inlineData"].(map[string]interface{}); ok {
+				mime, _ = inlAny["mimeType"].(string)
+			}
+			if strings.HasPrefix(mime, "application/pdf") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // splitDataURL разбирает "data:image/jpeg;base64,AAAA" на MIME и данные.
 func splitDataURL(u string) (mime, data string) {
 	if !strings.HasPrefix(u, "data:") {

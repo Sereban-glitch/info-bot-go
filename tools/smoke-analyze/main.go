@@ -68,7 +68,7 @@ func main() {
 	}
 	fmt.Println("модель:", model, "| ключей:", len(keys))
 
-	a, err := rot.AnalyzeRefusal(organ, subject, replyText, nil)
+	a, err := rot.AnalyzeRefusal(organ, subject, replyText, nil, nil)
 	if err != nil {
 		fmt.Println("ОШИБКА:", err)
 		os.Exit(1)

@@ -782,6 +782,7 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
                 strings.TrimSpace(req.Subject),
                 req.Text,
                 nil, // фото — только через бота (мини-апп шлёт текст)
+                nil, // PDF-сканы — только через бота
         )
         if err != nil {
                 if spendCredit {

@@ -159,15 +159,15 @@ func BuildRefusalAnalysisPrompt(organ, subject, replyText string) string {
 // Используется мини-приложением (POST /api/analyze); бот-хендлер работает
 // с этапами по отдельности (AnalyzeRefusalVerdict + AnalyzeRefusalDocument),
 // чтобы показать вердикт сразу и стримить документ.
-func (r *Rotator) AnalyzeRefusal(organ, subject, replyText string, photoBase64 []byte) (*RefusalAnalysis, error) {
-        a, err := r.AnalyzeRefusalVerdict(organ, subject, replyText, photoBase64)
+func (r *Rotator) AnalyzeRefusal(organ, subject, replyText string, photoBase64 []byte, pdfScans [][]byte) (*RefusalAnalysis, error) {
+        a, err := r.AnalyzeRefusalVerdict(organ, subject, replyText, photoBase64, pdfScans)
         if err != nil {
                 return nil, err
         }
         if a.NextStep == "none" || a.NextStep == "" {
                 return a, nil
         }
-        subj, body, derr := r.AnalyzeRefusalDocument(a, organ, subject, replyText, nil)
+        subj, body, derr := r.AnalyzeRefusalDocument(a, organ, subject, replyText, pdfScans, nil)
         if derr != nil {
                 // Документ не удался — вердикт ценен сам по себе; не валится весь разбор.
                 return a, nil
@@ -178,7 +178,7 @@ func (r *Rotator) AnalyzeRefusal(organ, subject, replyText string, photoBase64 [
 
 // AnalyzeRefusalVerdict — БЫСТРЫЙ этап: вердикт без документа
 // (тип, законность, нарушения, строки, следующий шаг, рекомендация).
-func (r *Rotator) AnalyzeRefusalVerdict(organ, subject, replyText string, photoBase64 []byte) (*RefusalAnalysis, error) {
+func (r *Rotator) AnalyzeRefusalVerdict(organ, subject, replyText string, photoBase64 []byte, pdfScans [][]byte) (*RefusalAnalysis, error) {
         replyText = TruncateReplyText(replyText)
 
         parts := []interface{}{
@@ -193,6 +193,17 @@ func (r *Rotator) AnalyzeRefusalVerdict(organ, subject, replyText string, photoB
                                 "data":     base64.StdEncoding.EncodeToString(photoBase64),
                         },
                 })
+        }
+        for _, pdfData := range pdfScans {
+                if len(pdfData) > 0 {
+                        media = true
+                        parts = append(parts, map[string]interface{}{
+                                "inlineData": map[string]string{
+                                        "mimeType": "application/pdf",
+                                        "data":     base64.StdEncoding.EncodeToString(pdfData),
+                                },
+                        })
+                }
         }
 
         contents := []interface{}{
@@ -267,22 +278,36 @@ func documentGoal(nextStep string) string {
 // шага. onChunk (если задан) получает дельты текста по мере генерации —
 // так бот показывает документ «печатается прямо на глазах» (пилот
 // стриминга). Возвращает тему и текст документа.
-func (r *Rotator) AnalyzeRefusalDocument(a *RefusalAnalysis, organ, subject, replyText string, onChunk func(string)) (string, string, error) {
+func (r *Rotator) AnalyzeRefusalDocument(a *RefusalAnalysis, organ, subject, replyText string, pdfScans [][]byte, onChunk func(string)) (string, string, error) {
         if a == nil || a.NextStep == "none" || a.NextStep == "" {
                 return "", "", nil
         }
         replyText = TruncateReplyText(replyText)
 
+        parts := []interface{}{
+                map[string]string{"text": BuildRefusalAnalysisPrompt(organ, subject, replyText)},
+        }
+        media := false
+        for _, pdfData := range pdfScans {
+                if len(pdfData) > 0 {
+                        media = true
+                        parts = append(parts, map[string]interface{}{
+                                "inlineData": map[string]string{
+                                        "mimeType": "application/pdf",
+                                        "data":     base64.StdEncoding.EncodeToString(pdfData),
+                                },
+                        })
+                }
+        }
+
         contents := []interface{}{
                 map[string]interface{}{
-                        "role": "user",
-                        "parts": []interface{}{
-                                map[string]string{"text": BuildRefusalAnalysisPrompt(organ, subject, replyText)},
-                        },
+                        "role":  "user",
+                        "parts": parts,
                 },
         }
 
-        text, err := r.tryProxyThenDirectStream(refusalDocumentSystemPrompt(a), contents, "", false, onChunk)
+        text, err := r.tryProxyThenDirectStream(refusalDocumentSystemPrompt(a), contents, "", media, onChunk)
         if err != nil {
                 return "", "", err
         }

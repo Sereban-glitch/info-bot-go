@@ -668,7 +668,7 @@ func (w *DostupSync) autoclassify(e sentlog.SentEntry, st *dostup.RequestStatus)
                         if organ == "" {
                                 organ = e.RecipientName
                         }
-                        verdict, vErr := w.deps.Gemini.AnalyzeRefusalVerdict(organ, e.Subject, fullText, nil)
+                        verdict, vErr := w.deps.Gemini.AnalyzeRefusalVerdict(organ, e.Subject, fullText, nil, nil)
                         if vErr == nil && verdict != nil {
                                 state = dostup.AIStateToDostup(verdict.Type)
                                 log.Printf("[DOSTUP-SYNC] %s: AI вердикт=%s -> %s", slug, verdict.Type, state)

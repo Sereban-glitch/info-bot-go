@@ -263,6 +263,54 @@ func TestContentsHasAudio(t *testing.T) {
         }
 }
 
+// TestContentsHasPDF — определение PDF-сканов в содержимом запроса:
+// они должны распознаваться, а текстовые/фото/аудио-запросы — нет.
+func TestContentsHasPDF(t *testing.T) {
+        withPDF := []interface{}{
+                map[string]interface{}{
+                        "role": "user",
+                        "parts": []interface{}{
+                                map[string]string{"text": "розбери"},
+                                map[string]interface{}{"inlineData": map[string]string{"mimeType": "application/pdf", "data": "AAAA"}},
+                        },
+                },
+        }
+        if !contentsHasPDF(withPDF) {
+                t.Fatal("PDF-скан должен определяться")
+        }
+        photo := []interface{}{
+                map[string]interface{}{
+                        "role": "user",
+                        "parts": []interface{}{
+                                map[string]interface{}{"inlineData": map[string]string{"mimeType": "image/jpeg", "data": "AAAA"}},
+                        },
+                },
+        }
+        if contentsHasPDF(photo) {
+                t.Fatal("фото — не PDF")
+        }
+        textOnly := []interface{}{
+                map[string]interface{}{
+                        "role":  "user",
+                        "parts": []map[string]string{{"text": "привіт"}},
+                },
+        }
+        if contentsHasPDF(textOnly) {
+                t.Fatal("текстовый запрос — не PDF")
+        }
+        audio := []interface{}{
+                map[string]interface{}{
+                        "role": "user",
+                        "parts": []interface{}{
+                                map[string]interface{}{"inlineData": map[string]string{"mimeType": "audio/ogg", "data": "AAAA"}},
+                        },
+                },
+        }
+        if contentsHasPDF(audio) {
+                t.Fatal("аудио — не PDF")
+        }
+}
+
 // TestSplitDataURL — разбор data-URI на MIME и данные.
 func TestSplitDataURL(t *testing.T) {
         mime, data := splitDataURL("data:image/jpeg;base64,QUJD")

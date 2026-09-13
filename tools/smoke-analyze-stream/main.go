@@ -50,7 +50,7 @@ func main() {
 
 	// Этап 1: быстрый вердикт.
 	t0 := time.Now()
-	a, err := rot.AnalyzeRefusalVerdict(organ, subject, replyText, nil)
+	a, err := rot.AnalyzeRefusalVerdict(organ, subject, replyText, nil, nil)
 	if err != nil {
 		fmt.Println("ОШИБКА ВЕРДИКТА:", err)
 		os.Exit(1)
@@ -64,7 +64,7 @@ func main() {
 	t1 := time.Now()
 	chunks := 0
 	var firstGap time.Duration
-	subj, body, derr := rot.AnalyzeRefusalDocument(a, organ, subject, replyText, func(delta string) {
+	subj, body, derr := rot.AnalyzeRefusalDocument(a, organ, subject, replyText, nil, func(delta string) {
 		if chunks == 0 {
 			firstGap = time.Since(t1)
 		}

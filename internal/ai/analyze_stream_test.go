@@ -151,7 +151,7 @@ func TestAnalyzeRefusalDocumentNoDocumentNeeded(t *testing.T) {
         // или упадёт; правильное поведение — сразу пустой результат.
         rot.geminiBase = "http://127.0.0.1:1"
         a := &RefusalAnalysis{NextStep: "none"}
-        subj, body, err := rot.AnalyzeRefusalDocument(a, "орган", "тема", "текст", nil)
+        subj, body, err := rot.AnalyzeRefusalDocument(a, "орган", "тема", "текст", nil, nil)
         if err != nil || subj != "" || body != "" {
                 t.Fatalf("nextStep=none: subj=%q body=%q err=%v — документ не должен запрашиваться", subj, body, err)
         }
@@ -180,7 +180,7 @@ func TestAnalyzeRefusalTwoStagesThroughProxy(t *testing.T) {
         rot := NewRotator([]string{"k"}, "m", "fb")
         rot.SetProxy(ProxyConfig{URL: srv.URL, Model: "proxy-model"})
 
-        a, err := rot.AnalyzeRefusal("Орган", "Тема", "Відмова без підстав", nil)
+        a, err := rot.AnalyzeRefusal("Орган", "Тема", "Відмова без підстав", nil, nil)
         if err != nil {
                 t.Fatalf("AnalyzeRefusal: %v", err)
         }

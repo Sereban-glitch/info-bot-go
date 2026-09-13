@@ -221,7 +221,8 @@ func (r *Rotator) proxyChatOpenAI(base, systemPrompt string, parts []proxyPart, 
 // не засчитывая сбой.
 func (r *Rotator) tryProxyThenDirect(systemPrompt string, contents []interface{}, responseMIME string, media bool) (string, error) {
 	audio := contentsHasAudio(contents)
-	if r.proxyAvailable() && !audio {
+	pdf := contentsHasPDF(contents)
+	if r.proxyAvailable() && !audio && !pdf {
 		text, err := r.proxyChat(systemPrompt, contents, media)
 		if err == nil {
 			r.markProxySuccess()
@@ -251,7 +252,7 @@ func (r *Rotator) tryProxyThenDirectStream(systemPrompt string, contents []inter
 	if onChunk == nil {
 		return r.tryProxyThenDirect(systemPrompt, contents, responseMIME, media)
 	}
-	if r.proxyAvailable() && !contentsHasAudio(contents) {
+	if r.proxyAvailable() && !contentsHasAudio(contents) && !contentsHasPDF(contents) {
 		text, err := r.proxyChatStream(systemPrompt, contents, media, onChunk)
 		if err == nil {
 			r.markProxySuccess()

@@ -394,18 +394,19 @@ func (m *AnalyzeModule) handleFromNotification(c tb.Context) error {
         }
 
         // --- PDF-вложения: тело письма может быть только подписью ---
-        replyText, hasPDFText, pdfFailed := m.appendPDFAttachments(c, slug, replyText)
+        replyText, hasPDFText, pdfFailed, pdfScans := m.appendPDFAttachments(c, slug, replyText)
 
-        if strings.TrimSpace(replyText) == "" {
+        // Скан без текстового слоя — не останавливаем розбор: сам файл
+        // поедет в AI (Gemini Vision принимает PDF нативно). Если же текст
+        // не извлёкся и скан не ушёл — только тогда просим текст вручную.
+        if strings.TrimSpace(replyText) == "" && len(pdfScans) == 0 {
                 return c.Send("❌ Не вдалося отримати текст відповіді. Скористайтесь /analyze і надішліть текст відповіді вручну.")
         }
-        // PDF был, но текста из него достать не удалось (скан без текстового
-        // слоя) — честно говорим и предлагаем фото-путь, который AI умеет.
-        if hasPDFText == 0 && len(pdfFailed) > 0 && utf8RuneCount(strings.TrimSpace(stripAttachmentMarker(replyText))) < 40 {
-                return c.Send(fmt.Sprintf("📄 Вкладення %s не містить текстового шару (ймовірно, це скан).\n\n"+
-                        "Надішліть фото сторінок листа — розберу його з зображення: /analyze",
-                        strings.Join(pdfFailed, ", ")))
+        if len(pdfScans) > 0 {
+                _ = c.Send("📄 Скан без текстового шару — надсилаю його в AI для розпізнавання…")
         }
+        _ = hasPDFText
+        _ = pdfFailed
 
         organ := e.DostupBody
         if organ == "" {
@@ -413,12 +414,17 @@ func (m *AnalyzeModule) handleFromNotification(c tb.Context) error {
         }
 
         sess := c.Get("session").(*session.SessionData)
+        pdfData := make([][]byte, 0, len(pdfScans))
+        for _, s := range pdfScans {
+                pdfData = append(pdfData, s.data)
+        }
         sess.Analyze = &AnalyzeDraft{
                 Organ:       organ,
                 Subject:     e.Subject,
                 RequestSlug: slug,
                 URL:         e.URL,
                 ReplyText:   replyText,
+                PDFScans:    pdfData,
         }
         saveSession(m.deps, c)
         return m.runAnalysis(c, sess, nil)
@@ -432,15 +438,15 @@ func (m *AnalyzeModule) handleFromNotification(c tb.Context) error {
 // Возвращает: дополненный текст, число успешно прочитанных PDF и имена
 // PDF, текст из которых достать не удалось (сканы). Лимиты: 2 PDF,
 // по 10 МБ — защита AI-квоты и RAM-лимита сервиса.
-func (m *AnalyzeModule) appendPDFAttachments(c tb.Context, slug, replyText string) (string, int, []string) {
+func (m *AnalyzeModule) appendPDFAttachments(c tb.Context, slug, replyText string) (string, int, []string, []pdfScan) {
         atts, err := m.deps.Dostup.GetRequestAttachments(slug)
         if err != nil {
                 log.Printf("[ANALYZE] GetRequestAttachments %s: %v", slug, err)
-                return replyText, 0, nil
+                return replyText, 0, nil, nil
         }
         pdfs := dostup.PDFAttachments(atts)
         if len(pdfs) == 0 {
-                return replyText, 0, nil
+                return replyText, 0, nil, nil
         }
 
         const maxPDFs = 2
@@ -455,6 +461,7 @@ func (m *AnalyzeModule) appendPDFAttachments(c tb.Context, slug, replyText strin
                 strings.Join(names, ", ")))
 
         added, failed := 0, []string{}
+        scans := []pdfScan{}
         const maxPDFBytes = 10 << 20 // 10 МБ
         for _, a := range pdfs {
                 data, derr := m.deps.Dostup.DownloadAttachment(a.HRef, maxPDFBytes)
@@ -468,6 +475,13 @@ func (m *AnalyzeModule) appendPDFAttachments(c tb.Context, slug, replyText strin
                 sendPDFDocument(c, a.Name, data)
                 text, xerr := pdftext.Extract(data, 6000)
                 if xerr != nil {
+                        // Скан без текстового слоя — сам файл поедет в AI
+                        // (Vision по PDF); прочие ошибки извлечения — failed.
+                        if errors.Is(xerr, pdftext.ErrNoText) {
+                                log.Printf("[ANALYZE] PDF %s: сканер (нема текстового шару)", a.Name)
+                                scans = append(scans, pdfScan{name: a.Name, data: capScanPDF(data)})
+                                continue
+                        }
                         log.Printf("[ANALYZE] extract %s: %v", a.Name, xerr)
                         failed = append(failed, a.Name)
                         continue
@@ -476,10 +490,27 @@ func (m *AnalyzeModule) appendPDFAttachments(c tb.Context, slug, replyText strin
                 added++
                 log.Printf("[ANALYZE] PDF %s: %d знаков текста (slug %s)", a.Name, utf8RuneCount(text), slug)
         }
-        if len(failed) > 0 {
+        if len(failed) > 0 && len(scans) == 0 {
                 _ = c.Send(fmt.Sprintf("⚠️ Не вдалося прочитати текст із %s — файл захищений або це скан.", strings.Join(failed, ", ")))
         }
-        return replyText, added, failed
+        return replyText, added, failed, scans
+}
+
+// pdfScan — отсканированный PDF, который не удалось прочитать как текст:
+// в AI уходит начало файла (титульная страница), чтобы Vision разобрал его.
+type pdfScan struct {
+        name string
+        data []byte
+}
+
+// capScanPDF обрезает скан до maxScanPDFBytes (начало файла). Защита
+// RAM-лимита сервиса: полный оригинал уже ушёл пользователю в чат.
+func capScanPDF(data []byte) []byte {
+        const maxScanPDFBytes = 3 << 20 // 3 МБ
+        if len(data) > maxScanPDFBytes {
+                return data[:maxScanPDFBytes]
+        }
+        return data
 }
 
 // handleGetPDF — кнопка «⬇️ Отримати PDF-вкладення» на уведомлении о
@@ -623,7 +654,7 @@ func (m *AnalyzeModule) runAnalysis(c tb.Context, sess *session.SessionData, pho
 // без списания кредита (первый успех для нового пользователя).
 func (m *AnalyzeModule) runAnalysisOpt(c tb.Context, sess *session.SessionData, photo []byte, demo bool) error {
         d := sess.Analyze
-        if d == nil || (strings.TrimSpace(d.ReplyText) == "" && len(photo) == 0) {
+        if d == nil || (strings.TrimSpace(d.ReplyText) == "" && len(photo) == 0 && len(d.PDFScans) == 0) {
                 return c.Send("❌ Немає тексту відповіді. Почніть заново: /analyze")
         }
         if !m.precheck(c, demo) {
@@ -638,7 +669,7 @@ func (m *AnalyzeModule) runAnalysisOpt(c tb.Context, sess *session.SessionData, 
         // в прямом эфире (пилот стриминга).
         _ = c.Send("⏳ Аналізую відповідь… (спершу — швидкий вердикт)")
 
-        analysis, err := m.deps.Gemini.AnalyzeRefusalVerdict(d.Organ, d.Subject, d.ReplyText, photo)
+        analysis, err := m.deps.Gemini.AnalyzeRefusalVerdict(d.Organ, d.Subject, d.ReplyText, photo, d.PDFScans)
         if err != nil {
                 if spentCredit {
                         _ = m.deps.Stars.Add(c.Sender().ID, 1)
@@ -679,7 +710,7 @@ func (m *AnalyzeModule) streamDraft(c tb.Context, sess *session.SessionData, d *
         holder, herr := c.Bot().Send(c.Recipient(), "⏳ <b>Готую документ…</b>\n\n<i>Текст з'являтиметься поступово.</i>", tb.ModeHTML)
         if herr != nil {
                 log.Printf("[ANALYZE] stream holder send failed: %v", herr)
-                subject, body, derr := m.deps.Gemini.AnalyzeRefusalDocument(a, d.Organ, d.Subject, d.ReplyText, nil)
+                subject, body, derr := m.deps.Gemini.AnalyzeRefusalDocument(a, d.Organ, d.Subject, d.ReplyText, d.PDFScans, nil)
                 if derr != nil {
                         log.Printf("[ANALYZE] document error user=%d: %v", c.Sender().ID, derr)
                         return nil // вердикт уже доставлен
@@ -692,7 +723,7 @@ func (m *AnalyzeModule) streamDraft(c tb.Context, sess *session.SessionData, d *
         var buf strings.Builder
         lastEdit := time.Now()
 
-        subject, body, derr := m.deps.Gemini.AnalyzeRefusalDocument(a, d.Organ, d.Subject, d.ReplyText, func(delta string) {
+        subject, body, derr := m.deps.Gemini.AnalyzeRefusalDocument(a, d.Organ, d.Subject, d.ReplyText, d.PDFScans, func(delta string) {
                 buf.WriteString(delta)
                 // Telegram не любит частые правки одного сообщения: обновляем
                 // не чаще раза в ~1.5 секунды, а финальный вид всё равно покажем
