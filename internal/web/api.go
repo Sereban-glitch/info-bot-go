@@ -127,6 +127,15 @@ type LawRef struct {
 func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
         return func(w http.ResponseWriter, r *http.Request) {
                 initData := r.Header.Get("X-Init-Data")
+                if initData == "" {
+                        auth := r.Header.Get("Authorization")
+                        for _, pfx := range []string{"tma ", "Bearer ", "tma"} {
+                                if strings.HasPrefix(auth, pfx) {
+                                        initData = strings.TrimPrefix(auth, pfx)
+                                        break
+                                }
+                        }
+                }
                 var userID int64
                 var ok bool
                 if initData != "" {
