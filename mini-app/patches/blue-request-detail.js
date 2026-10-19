@@ -6,6 +6,24 @@ function szPortalURL(value) {
       && !url.username && !url.password ? url.href : null;
   } catch { return null; }
 }
+// Preserve the exact saved excerpt; structured previews never guess row breaks.
+function SzResponseExcerpt({value}) {
+  const preview = szResponsePreview(value);
+  if (preview.kind === 'text') return sz('div', {className: 'sz-response-preview'},
+    sz('div', {className: 'sz-response-excerpt'}, preview.raw),
+    preview.notice ? sz('p', {className: 'sz-response-notice'}, preview.notice) : null);
+  return sz('div', {className: 'sz-response-preview'},
+    sz('p', {className: 'sz-response-notice'}, preview.notice),
+    preview.kind === 'table'
+      ? sz('div', {className: 'sz-response-table-wrap', tabIndex: 0, role: 'region', 'aria-label': 'Табличний фрагмент відповіді'},
+        sz('table', {className: 'sz-response-table'}, sz('tbody', {},
+          ...preview.rows.map((row, i) => sz('tr', {key: i}, ...row.map((cell, j) => sz('td', {key: j}, cell)))))))
+      : sz('ol', {className: 'sz-response-fields'}, ...preview.fields.map((field, i) => sz('li', {key: i}, field || '(порожнє поле)'))),
+    preview.partialRaw ? sz('div', {className: 'sz-response-tail'},
+      sz('p', {className: 'sz-small-muted'}, 'Неповний або нерозпізнаний кінець'),
+      sz('pre', {}, preview.partialRaw)) : null,
+    sz('details', {className: 'sz-response-raw'}, sz('summary', {}, 'Збережений фрагмент без форматування'), sz('pre', {}, preview.raw)));
+}
 function SmartRequestDetail() {
   const pathname = pi({select: state => state.location.pathname});
   const requests = go(state => state.requests);
@@ -37,7 +55,7 @@ function SmartRequestDetail() {
         sz('div', {}, sz('p', {className: 'sz-next-date-label'}, 'Можливий наступний крок'), sz('p', {}, nextStep)))),
     received ? sz('section', {className: 'sz-response-section'},
       sz('h2', {}, 'Фрагмент відповіді'),
-      request.responseExcerpt ? sz('div', {className: 'sz-response-excerpt'}, request.responseExcerpt)
+      request.responseExcerpt ? sz(SzResponseExcerpt, {value: request.responseExcerpt})
         : sz('p', {className: 'sz-empty-copy'}, 'Текст відповіді не передано до застосунку. Перегляньте його у джерелі.'),
       sz('p', {className: 'sz-small-muted'}, 'Вміст із журналу запитів. Це не AI-аналіз і не правова оцінка.')) : null,
     portalURL ? sz('a', {href: portalURL, target: '_blank', rel: 'noopener noreferrer', className: 'sz-source-link'},
@@ -51,7 +69,7 @@ function SmartRequestDetail() {
         !received && status !== 'bounced' && request.deadline ? sz('li', {}, sz('strong', {}, 'Розрахунковий строк'),
           sz('span', {}, co(request.deadline)), sz('small', {}, '5 робочих днів від надсилання; можливе продовження.')) : null,
         sz('li', {}, sz('strong', {}, 'Запит надіслано'), sz('span', {}, co(request.createdAt) || 'Дату не вказано')))),
-    sz('a', {href: 'https://t.me/Infozaputbot', target: '_blank', rel: 'noopener noreferrer', className: 'sz-primary-action'},
-      sz(SzIcon, {name: 'arrow'}), 'Продовжити у боті'));
+    sz('a', {href: 'https://t.me/Infozaputbot', target: '_blank', rel: 'noopener noreferrer', onClick: szOpenBotChat, className: 'sz-primary-action'},
+      sz(SzIcon, {name: 'arrow'}), 'Відкрити чат бота'));
 }
 var SmartDetailRoute = Kr('/requests/$requestId')({component: SmartRequestDetail});

@@ -4,7 +4,7 @@ function SzRequestLink({request, className, children}) {
 }
 function SzNewRequest() {
   // README's existing production bot; opening it does not send or create a request.
-  return sz('a', {href: 'https://t.me/Infozaputbot', target: '_blank', rel: 'noopener noreferrer',
+  return sz('a', {href: 'https://t.me/Infozaputbot', target: '_blank', rel: 'noopener noreferrer', onClick: szOpenBotChat,
     className: 'sz-primary-action'}, sz(SzIcon, {name: 'plus'}), 'Новий запит у боті');
 }
 function Es() {
@@ -12,6 +12,7 @@ function Es() {
   const summary = Ss(requests);
   const nearest = Cs(requests);
   const latest = ws(requests);
+  const nearestDeadline = nearest && szDeadlineInfo(nearest);
   const {ready, error} = _.useContext(SmartSyncContext);
   const [portal, setPortal] = _.useState(null);
   const [portalError, setPortalError] = _.useState(false);
@@ -58,6 +59,12 @@ function Es() {
         sz('p', {className: 'sz-next-note'}, error ? 'Спробуйте оновити дані кнопкою вище.' : 'Створюйте запити у боті й стежте за відповідями тут.')),
     next && !isReceipt && !isBounced ? sz('p', {className: 'sz-calculation-note'},
       'Орієнтир: 5 робочих днів від надсилання. Не враховує продовження строку та особливості розгляду.') : null,
+    nearest && nearestDeadline ? sz(SzRequestLink, {request: nearest, className: 'sz-nearest-deadline'},
+      sz('div', {className: 'sz-nearest-heading'}, sz('h2', {}, 'Найближчий строк'),
+        sz('strong', {'data-tone': nearestDeadline.tone}, nearestDeadline.label)),
+      sz('p', {className: 'sz-nearest-subject'}, nearest.subject),
+      sz('p', {className: 'sz-small-muted'}, `${nearestDeadline.date} · ${nearest.recipientName}`),
+      sz('p', {className: 'sz-small-muted'}, 'Розрахунковий орієнтир: 5 робочих днів від надсилання; можливе продовження.')) : null,
     sz('section', {className: 'sz-work-section'},
       sz('div', {className: 'sz-section-heading'}, sz('h2', {}, 'Ваші справи'),
         sz(Vr, {to: '/requests', className: 'sz-text-link'}, 'Усі запити', sz(SzIcon, {name: 'chevron'}))),

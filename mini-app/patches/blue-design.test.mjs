@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const source=name=>fs.readFileSync(new URL(name,import.meta.url),'utf8');
-const viewFiles=['blue-shell.js','blue-home.js','blue-request-card.js','blue-request-detail.js'];
+const viewFiles=['blue-shell.js','bot-navigation.js','response-preview.js','blue-home.js','blue-request-card.js','blue-request-detail.js'];
 const received=new Set(['replied','unrated','refused','partial']);
 const example={id:'fixture-id',subject:'Fixture request',recipientName:'Fixture authority',createdAt:'2099-01-01',deadline:'2099-01-08',status:'pending',channel:'dostup'};
 
@@ -148,4 +148,27 @@ test('encoded email-style request IDs resolve to their exact authenticated row',
  const ctx=app([{...example,id}],{id:encodeURIComponent(id)});
  assert.ok(text(ctx.SmartRequestDetail()).includes(example.subject));
  assert.equal(ctx.xs({req:{...example,id}}).props.params.requestId,id);
+});
+
+
+test('response preview renders literal CSV cells without guessed headers and preserves raw',()=>{
+ const csv='name;value\n"<img src=x onerror=alert(1)>";"2"\ntruncated;…';
+ const detail=app([{...example,status:'replied',responseExcerpt:csv}]).SmartRequestDetail();
+ const all=nodes(detail);
+ assert.equal(all.filter(node=>node?.type==='th').length,0);
+ assert.equal(all.filter(node=>node?.type==='td').length,4);
+ assert.ok(all.some(node=>node?.type==='td'&&node.props.children==='<img src=x onerror=alert(1)>'));
+ assert.ok(!all.some(node=>node?.type==='img'||node?.props?.dangerouslySetInnerHTML));
+ assert.ok(text(byClass(detail,'sz-response-tail')[0]).includes('truncated;…'));
+ const raw=byClass(detail,'sz-response-raw')[0];
+ assert.ok(nodes(raw).some(node=>node?.type==='pre'&&node.props.children===csv));
+});
+test('flattened CSV remains a sequence of fields with a visible limitation',()=>{
+ const raw='date;name;email;2026-10-01;[REDACTED];broken�';
+ const detail=app([{...example,status:'replied',responseExcerpt:raw}]).SmartRequestDetail();
+ assert.equal(nodes(detail).filter(node=>node?.type==='table').length,0);
+ assert.equal(byClass(detail,'sz-response-fields').length,1);
+ assert.ok(text(detail).includes('Межі рядків не збережено'));
+ assert.ok(text(detail).includes('пошкоджені символи'));
+ assert.ok(text(detail).includes('[REDACTED]'));
 });

@@ -139,3 +139,34 @@ To reproduce the runtime-only DOM test without changing app dependencies:
 These fixtures also cover complex email-style message IDs, failed initial loads,
 failed refreshes retaining prior records, successful-empty retries, bounced-only
 accounts, and received replies whose receipt date is unavailable.
+
+
+## Follow-up regression repairs (base PR9)
+
+The blue cards again show the existing pending/overdue countdown, urgency colour,
+and sent date. Home exposes the nearest unresolved request independently of the
+latest received reply. The same original date/status helpers remain authoritative.
+An empty filter offers a reset without calling the account empty; rating cards show
+the already documented successful/all percentage, and the auto-reply label is fixed.
+
+The generic bot-chat action uses `Telegram.WebApp.openTelegramLink` followed by
+`close` after a successful SDK call. Neither call sends a message or request ID.
+A normal HTTPS anchor remains the browser/unsupported-SDK fallback. Modified clicks
+keep native browser behavior. There is no request-resume promise.
+
+Saved response excerpts remain literal text. Real CSV line boundaries can support
+an unlabelled table; flattened semicolon fragments are an ordered field sequence,
+never reconstructed rows. A clipped or malformed last row is kept separate, and
+the exact raw fragment remains expandable. Damaged stored characters are flagged,
+not guessed. Future portal fetches preserve explicit line breaks and clip at Unicode
+code-point boundaries. Existing finalized records are not refreshed or backfilled.
+
+Additional runtime checks:
+
+    SMARTZAPYT_QA_NODE_MODULES=/tmp/smartzapyt-dom-qa/node_modules node mini-app/qa/deadline_dom_test.mjs
+
+The deterministic deadline suite fails on the previous PR9 sources and covers mixed
+reply/pending accounts, overdue/today/tomorrow/future countdowns and filter routing.
+The runtime extension also exercises bot navigation, percentage display and escaped
+CSV/raw response previews against the actual generated bundle. No production data
+is needed or modified by these tests.
