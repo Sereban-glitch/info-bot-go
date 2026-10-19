@@ -113,7 +113,7 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, dostup.ErrNeedsClassification):
 			log.Printf("[WEB] dostup needs-classification: user=%d subject=%q err=%v", userID, req.Subject, err)
-			writeJSON(w, http.StatusBadGateway, APIResponse{OK: false, Err: "портал не прийняв запит: уточніть тему"})
+			writeJSON(w, http.StatusBadGateway, APIResponse{OK: false, Err: "портал просить класифікувати попередні відповіді спільного акаунта. Це не помилка теми й не відсутній рейтинг органу. Зверніться до адміністратора бота; новий запит не надіслано"})
 		case errors.Is(err, dostup.ErrRateLimited):
 			writeJSON(w, http.StatusTooManyRequests, APIResponse{OK: false, Err: "портал обмежує частоту — спробуйте за 3–5 хвилин"})
 		case errors.Is(err, dostup.ErrInvalidResponse):
