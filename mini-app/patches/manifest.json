@@ -1,0 +1,63 @@
+{
+  "baseCommit": "5e3ad6aab29633eebcc12831ff3d519466efef95",
+  "baseAsset": "internal/web/static/assets/index-BzgxKBHD.js",
+  "sha256": "964d5c14c8caf0b3907c7a6d7cd17d3a3d7ad3683f99f1fa99fa0f3987ccd6d8",
+  "changes": [
+    {
+      "before": "function _o(e){if(e.status!==`pending`)return e.status;let t=fo(new Date(e.createdAt),5);return new Date>t?`overdue`:`pending`}",
+      "source": "request-status.js"
+    },
+    {
+      "before": "function Ss(e){let t=0,n=0,r=0,i=0,a=0,o=0;for(let s of e){let e=_o(s);e===`replied`?t+=1:e===`pending`?n+=1:e===`overdue`?r+=1:e===`refused`?i+=1:e===`partial`?a+=1:e===`bounced`&&(o+=1)}return{total:e.length,replied:t,pending:n,overdue:r,refused:i,partial:a,bounced:o,answered:t+a}}",
+      "source": "request-summary.js"
+    },
+    {
+      "before": "replied:{label:`Відповідь`,tone:`ok`}",
+      "after": "replied:{label:`Успішна відповідь`,tone:`ok`},unrated:{label:`Відповідь без оцінки`,tone:`mute`}"
+    },
+    {
+      "before": "var So={pending:`pending`,replied:`replied`,overdue:`overdue`,bounced:`bounced`}",
+      "after": "var So={pending:`pending`,replied:`replied`,overdue:`overdue`,bounced:`bounced`,refused:`refused`,partial:`partial`,unrated:`unrated`}"
+    },
+    {
+      "before": "e.filter(e=>_o(e)===t)",
+      "after": "e.filter(e=>t===`replied`?[`replied`,`unrated`,`refused`,`partial`].includes(_o(e)):_o(e)===t)"
+    },
+    {
+      "before": "t===`replied`||t===`partial`||t===`refused`?",
+      "after": "t===`replied`||t===`unrated`||t===`partial`||t===`refused`?"
+    },
+    {
+      "before": "status:i.status",
+      "after": "status:_o(i)"
+    },
+    {
+      "before": "title:`Рейтинг органів`,hint:`Хто відповідає вчасно, а хто ігнорує запити.`",
+      "after": "title:`Рейтинг органів`,hint:`За даними порталу «Доступ до правди», для органів із щонайменше 5 запитами. Частка успішних: успішні / усі запити × 100%. Це не частка всіх відповідей і не показник своєчасності.`"
+    },
+    {
+      "before": "`Відповідей: `,(0,F.jsx)(`span`,{className:`text-[#ece8df]`,children:e.successful??0})",
+      "after": "`Успішних: `,(0,F.jsx)(`span`,{className:`text-[#ece8df]`,children:e.successful??0})"
+    },
+    {
+      "before": "children:`Відповідей`}),(0,F.jsx)(`span`,{className:`text-lg font-semibold text-ok tabular`,children:c.successful})",
+      "after": "children:`Успішних`}),(0,F.jsx)(`span`,{className:`text-lg font-semibold text-ok tabular`,children:c.successful})"
+    },
+    {
+      "before": "Сводний показник по всіх користувачах застосунку (не ваші особисті запити).",
+      "after": "Зведені дані журналу всіх користувачів цього застосунку. Відповіді включають відмови та часткові відповіді; це не показник успішності й не статистика всього порталу."
+    },
+    {
+      "before": "label:`Відповіді`,n:n.replied+n.partial",
+      "after": "label:`Відповіді без відмов`,n:n.replied+n.partial"
+    },
+    {
+      "before": "function ws(e){let t=e.filter(e=>e.repliedAt);",
+      "after": "function ws(e){let t=e.filter(e=>e.repliedAt&&[`replied`,`unrated`,`refused`,`partial`].includes(_o(e)));"
+    },
+    {
+      "before": "`Середній час відповіді: `",
+      "after": "`Середній час у журналі застосунку: `"
+    }
+  ]
+}
