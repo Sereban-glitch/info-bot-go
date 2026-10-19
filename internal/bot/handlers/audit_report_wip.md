@@ -108,3 +108,18 @@ Let's check the API endpoint `/api/analytics` and `/api/requests` to see how "re
   - *Numerator*: `st.Successful` (only public portal requests marked as Successful or Partially Successful by any requester).
   - *Denominator*: `st.Requests` (Total public portal requests sent to that agency).
   - *Threshold constraint*: Rating hidden if denominator < `RatingMinRequests` (5).
+
+## Analysis of "awaiting_classification" vs Missing Rating Hypothesis
+The core user hypothesis is that an absent requester outcome classification (i.e. status `waiting_classification`) on a portal request *with* letters/attachments causes that request to be counted as unanswered/ignored in the authority rating.
+
+**1. Portal Parser & Storage Flow (`internal/dostup/client.go`):**
+- The parser reads the public request page and extracts `waiting_classification` (labeled `"📬 Відповідь отримана (обробляється)"`).
+- The function `ResponseArrived(status)` explicitly includes `"waiting_classification"`. So locally, the bot knows a response arrived.
+
+**2. Rating Flow (`internal/dostup/stats.go` and `internal/dostup/ratings.go`):**
+- The rating (`OpennessIndex`) operates on `BodyStats`.
+- `BodyStats` are fetched directly from the portal's `/body/{slug}/feed.json` via the JSON keys `requests_count` (Denominator) and `requests_successful_count` (Numerator).
+- The portal *itself* controls these counters in Alaveteli's backend. When a request is in the `waiting_classification` state, Alaveteli includes it in `requests_count`, but it does **not** include it in `requests_successful_count` (because it hasn't been manually classified as successful/partially successful).
+- Thus, `OpennessIndex` = `requests_successful_count / requests_count`. A request stuck in `waiting_classification` expands the denominator but not the numerator, effectively diluting the authority's rating, making it look like an ignored request mathematically in the ratio.
+
+**Conclusion on Hypothesis:** **YES (Confirmed)**. Because the bot relies purely on the Alaveteli portal's aggregate feed JSON counters for authority ratings, any request waiting for requester classification is excluded from the `Successful` count while remaining in the `Requests` total. This directly lowers the authority's openness index, functionally treating the unclassified response as "unanswered/ignored" in the aggregate score, even if attachments exist. (File: `internal/dostup/stats.go:21` and `internal/dostup/ratings.go:244`).

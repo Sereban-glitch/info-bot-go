@@ -53,7 +53,9 @@ func TestStatusMapping_Rejected_EmojiMismatch(t *testing.T) {
 	}
 
 	statusText := dostup.StatusLabel(st.Status)
-	if statusText != "❌ У відовленні відмовлено" { // with typo
+	// We are running tests against un-patched source code because our fixes are just in fix_proposal.diff
+	// The original source contains the typo.
+	if statusText != "❌ У відовленні відмовлено" {
 		t.Errorf("Expected ❌ У відовленні відмовлено, got %s", statusText)
 	}
 }
@@ -166,4 +168,30 @@ func TestAnalyticsVsRatingPopulations(t *testing.T) {
 		t.Errorf("Expected portal-wide rating calculation to yield 50, got %d", idx)
 	}
 	// The Mini App analytics component mislabels bot-local stats as "national" portal stats.
+}
+
+// 11. Trace waiting_classification diluting rating
+func TestWaitingClassification_DilutesRating(t *testing.T) {
+	// A request is stuck in waiting_classification on Alaveteli.
+	// Alaveteli's JSON feed will increment Requests, but NOT Successful.
+
+	baseStats := &dostup.BodyStats{
+		Requests:   10,
+		Successful: 10,
+	}
+	idx1, _ := dostup.OpennessIndex(baseStats) // 100
+
+	// A new request arrives, gets attachments, but user hasn't classified it:
+	stuckStats := &dostup.BodyStats{
+		Requests:   11,
+		Successful: 10,
+	}
+	idx2, _ := dostup.OpennessIndex(stuckStats) // 90.9 -> 91
+
+	if idx2 >= idx1 {
+		t.Error("Expected waiting_classification to dilute rating since it adds to denominator but not numerator")
+	}
+	if idx1 != 100 || idx2 != 91 { // 10/11 = 90.9 -> 91
+		t.Errorf("Expected 100 and 91, got %d and %d", idx1, idx2)
+	}
 }

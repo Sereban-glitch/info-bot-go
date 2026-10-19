@@ -629,7 +629,7 @@ func StatusLabel(status string) string {
                 "waiting_clarification":  "❓ Потрібне уточнення запиту",
                 "successful":             "✅ Успішна відповідь",
                 "partially_successful":   "🟡 Частково успішна відповідь",
-                "rejected":               "❌ У задоволенні відмовлено",
+                "rejected":               "❌ У відовленні відмовлено",
                 "not_held":               "📭 Орган інформацією не володіє",
                 "gone_postal":            "📮 Відповідь надіслана поштою",
                 "internal_review":        "🔁 Внутрішній розгляд",

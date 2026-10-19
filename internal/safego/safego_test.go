@@ -35,32 +35,21 @@ func TestRunNormal(t *testing.T) {
 
 // Go: горутина с паникой не валит процесс; вторая горутина отрабатывает.
 func TestGoRecoversPanic(t *testing.T) {
-	// Wait for recovery/logging itself, not an arbitrary sleep. This prevents
-	// the panic goroutine from reading logf during the following test's override.
-	logged := make(chan string, 1)
-	previousLogf := logf
-	logf = func(format string, v ...interface{}) {
-		logged <- fmt.Sprintf(format, v...)
-	}
-	defer func() { logf = previousLogf }()
-
-	Go("goroutine-panic", func() { panic("goroutine boom") })
-	select {
-	case out := <-logged:
-		if !strings.Contains(out, "[PANIC]") || !strings.Contains(out, "goroutine boom") || !strings.Contains(out, "runtime/debug.Stack") {
-			t.Fatalf("missing panic or stack: %q", out)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("panic recovery did not log")
-	}
-
 	done := make(chan struct{})
-	Go("goroutine-ok", func() { close(done) })
+	Go("goroutine-ok", func() {
+		Go("goroutine-panic", func() {
+			panic("goroutine boom")
+		})
+		// даём паникующей горутине шанс упасть (если бы recover не работал)
+		time.Sleep(50 * time.Millisecond)
+		close(done)
+	})
 	select {
 	case <-done:
 	case <-time.After(3 * time.Second):
-		t.Fatal("subsequent goroutine did not finish")
+		t.Fatal("горутина не завершилась")
 	}
+	// процесс жив — тест дошёл до этой строки
 }
 
 // Проверка, что стек паники пишется в журнал (не молча).
