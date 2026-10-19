@@ -11,6 +11,7 @@ import (
         "info-bot-go/internal/alert"
         "info-bot-go/internal/config"
         "info-bot-go/internal/session"
+        "info-bot-go/internal/sentlog"
         "info-bot-go/internal/stats"
 )
 
@@ -189,24 +190,8 @@ func (m *StatsModule) handleStats(c tb.Context) error {
 
 func (m *StatsModule) handleUserStats(c tb.Context) error {
         requests := m.deps.SentLog.ListByUser(c.Sender().ID)
-        sent := len(requests)
-        replied := 0
-        pending := 0
-
-        for _, r := range requests {
-                if r.ReplyReceivedAt != "" || r.Status == "replied" {
-                        replied++
-                } else {
-                        pending++
-                }
-        }
-
-        text := fmt.Sprintf("📊 *Ваша статистика:*\n\n"+
-                "📨 Запитів надіслано: %d\n"+
-                "✅ Відповідей отримано: %d\n"+
-                "⏳ Очікуєте відповідь: %d\n\n"+
-                "Деталі: /my",
-                sent, replied, pending)
+        summary := sentlog.Summarize(requests)
+        text := "📊 *Ваша статистика (журнал бота):*\n\n" + requestSummaryText(summary) + "\nДеталі: /my"
 
         return c.Send(text, tb.ModeMarkdown)
 }
@@ -214,16 +199,11 @@ func (m *StatsModule) handleUserStats(c tb.Context) error {
 func (m *StatsModule) handleAdminStats(c tb.Context) error {
         gs := m.deps.Stats.Get()
 
-        replyRate := 0
-        if gs.TotalRequestsSent > 0 {
-                replyRate = gs.TotalRepliesReceived * 100 / gs.TotalRequestsSent
-        }
-
-        // Живые статусы из портала: сколько запросов ждут ответа
-        dostupPending := 0
+        var entries []sentlog.SentEntry
         if m.deps.SentLog != nil {
-                dostupPending = len(m.deps.SentLog.ListPendingDostup())
+                entries = m.deps.SentLog.ListAll()
         }
+        summary := sentlog.Summarize(entries)
 
         moduleText := ""
         if len(gs.ModuleUsage) > 0 {
@@ -242,21 +222,32 @@ func (m *StatsModule) handleAdminStats(c tb.Context) error {
                 }
         }
 
-        text := fmt.Sprintf("📊 *Глобальний дашборд:*\n\n"+
-                "👥 Унікальних користувачів: %d\n"+
-                "🌐 Запитів на порталі: %d\n"+
-                "✅ Отримано відповідей: %d (%d%%)\n"+
-                "⏳ Очікують відповіді: %d\n"+
-                "🔄 Синхронізація з порталом: кожні %d хв\n"+
+        text := fmt.Sprintf("📊 *Дашборд бота та спільного акаунта:*\n\n"+
+                "👥 Унікальних користувачів бота: %d\n"+
+                "%s"+
+                "🔄 Інтервал синхронізації: %d хв\n"+
                 "%s\n"+
-                "🔄 Оновлено: %s\n\n"+
+                "🔄 Оновлено лічильники активності: %s\n\n"+
                 "Форсувати синхронізацію: /sync",
-                gs.TotalUsers, gs.TotalRequestsSent, gs.TotalRepliesReceived,
-                replyRate, dostupPending,
-                m.deps.Cfg.DostupSyncMinutes,
-                moduleText, updatedStr)
+                gs.TotalUsers, requestSummaryText(summary),
+                m.deps.Cfg.EffectiveDostupSyncMinutes(), moduleText, updatedStr)
 
         return c.Send(text, tb.ModeMarkdown)
+}
+
+// All request counters come from the same recorded population. Receiving a
+// substantive reply does not imply successful outcome or a user's assessment.
+func requestSummaryText(s sentlog.Summary) string {
+        return fmt.Sprintf("📨 Надіслано (за журналом): %d\n"+
+                "📬 Відповідей по суті: %d\n"+
+                "⏳ Очікують відповіді по суті: %d\n"+
+                "📄 З них лише підтвердження: %d\n"+
+                "❌ Помилок доставки: %d\n"+
+                "🚫 Відкликано без відповіді по суті: %d\n"+
+                "📝 Без підтвердження надсилання: %d\n"+
+                "🏷 За журналом ще не класифіковано: %d\n",
+                s.Total, s.Answered, s.Awaiting, s.AckOnly, s.Bounced,
+                s.Withdrawn, s.Undelivered, s.AwaitingClassification)
 }
 
 func moduleLabel(name string) string {

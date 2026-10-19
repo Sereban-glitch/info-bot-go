@@ -64,10 +64,7 @@ func (w *DostupSync) SetFollowUpModule(fu *FollowUpModule) {
 // Каждая итерация защищена safego: паника в одной итерации не убивает
 // цикл — она пишется в журнал со стеком, а следующий тик работает дальше.
 func (w *DostupSync) Start() {
-        interval := 20 * time.Minute
-        if m := w.deps.Cfg.DostupSyncMinutes; m > 0 {
-                interval = time.Duration(m) * time.Minute
-        }
+        interval := time.Duration(w.deps.Cfg.EffectiveDostupSyncMinutes()) * time.Minute
         tick := func() {
                 safego.Run("dostup-sync", func() {
                         w.refreshCatalogIfNeeded()
@@ -237,15 +234,9 @@ func (w *DostupSync) SyncNow(verbose bool) string {
 
         // --- 3. Согласование счётчиков (портал = источник истины) ---
         all := w.deps.SentLog.ListAll()
-        total, replies := 0, 0
-        for _, e := range all {
-                total++
-                if e.ReplyReceivedAt != "" || e.Status == "replied" {
-                        replies++
-                }
-        }
+        summary := sentlog.Summarize(all)
         if w.deps.Stats != nil {
-                w.deps.Stats.SyncCounts(total, replies)
+                w.deps.Stats.SyncCounts(summary.Total, summary.Answered)
         }
 
         // --- 4. Напоминания о просроченных гилках (строк минул) ---
@@ -259,7 +250,7 @@ func (w *DostupSync) SyncNow(verbose bool) string {
                         report.WriteString("✅ Синхронізація: змін немає. ")
                 }
                 report.WriteString(fmt.Sprintf("Портал: %d запит(ів), всього враховано: %d, відповідей по суті: %d.",
-                        len(reqs), total, replies))
+                        len(reqs), summary.Total, summary.Answered))
                 return report.String()
         }
         return report.String()

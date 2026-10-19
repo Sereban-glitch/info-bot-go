@@ -38,7 +38,7 @@ func (m *HelpModule) Register() {
 			"У групових чатах команди працюють так само. Профіль у кожного користувача свій."
 
 		if c.Sender().ID == m.deps.Cfg.AdminID {
-			text += "\n\n*Для власника:*\n/sync — форс-синхронізація з порталом\n/backup — отримати архів коду проєкту"
+			text += "\n\nДля власника:\n/sync — форс-синхронізація з порталом\n/backup — отримати архів коду проєкту"
 		}
 
 		kb := MainMenuKeyboard(m.deps.Cfg, c.Sender().ID)
