@@ -74,6 +74,9 @@
     {
       "before": "var zs={IndexRoute:",
       "source": [
+        "bot-navigation.js",
+        "rating-metric.js",
+        "response-preview.js",
         "blue-request-detail.js"
       ],
       "append": "var zs={IndexRoute:"
@@ -89,6 +92,18 @@
     {
       "before": "Складіть перший запит — AI оформить юридичний текст, ви надішлете його органу.",
       "after": "Створіть запит у Telegram-боті Smart Zapyt. Надіслані запити з’являться тут."
+    },
+    {
+      "before": "function Rs(){let e=go(e=>e.requests),[t,n]=(0,_.useState)(`all`),r=(0,_.useMemo)(()=>t===`all`?e:e.filter(e=>t===`replied`?[`replied`,`unrated`,`refused`,`partial`].includes(_o(e)):_o(e)===t),[e,t]);return(0,F.jsxs)(`div`,{children:[(0,F.jsx)(Oo,{title:`Запити`,hint:`Фільтруйте за статусом. Відкрийте запит, щоб переглянути відповідь і події. Строки розрахункові.`}),(0,F.jsx)(`div`,{className:`-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]`,children:Ls.map(e=>(0,F.jsx)(`button`,{type:`button`,onClick:()=>n(e.id),className:H(`h-9 shrink-0 rounded-full px-3.5 text-sm font-medium transition-colors duration-150`,t===e.id?`bg-primary text-primary-fg`:`bg-raised text-muted shadow-[var(--shadow-border)]`),children:e.label},e.id))}),r.length===0?(0,F.jsx)(Fs,{icon:(0,F.jsx)(Si,{className:`size-8`}),title:`Запитів немає`,hint:`Створіть запит у Telegram-боті Smart Zapyt. Надіслані запити з’являться тут.`}):(0,F.jsx)(`div`,{className:`flex flex-col gap-2`,children:r.map(e=>(0,F.jsx)(xs,{req:e},e.id))})]})}",
+      "source": "blue-request-list.js"
+    },
+    {
+      "before": "Тільки автоавтовідповідь",
+      "after": "Тільки автовідповідь"
+    },
+    {
+      "before": "e.avgResponseHours>0&&(0,F.jsxs)(`div`,{className:`mt-2 text-[10px] text-[#6d675f]`",
+      "after": "(0,F.jsxs)(`p`,{className:`sz-rating-success`,children:[`Успішність: `,szSuccessRate(e)??`недостатньо даних`]}),e.avgResponseHours>0&&(0,F.jsxs)(`div`,{className:`mt-2 text-[10px] text-[#6d675f]`"
     }
   ],
   "styles": [

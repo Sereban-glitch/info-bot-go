@@ -180,3 +180,35 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .sz-sync-error { margin-bottom: 20px; padding: 14px; border: 1px solid #806448; border-radius: 14px; background: #342d28; color: #ffdfb2; font-size: 12px; line-height: 1.6; }
 .sz-sync-error button { display: block; margin-top: 10px; min-height: 40px; padding: 8px 13px; border-radius: 9px; background: #ffdfb2; color: #342414; font-weight: 600; }
 .sz-sync-error button:disabled { opacity: .65; cursor: wait; }
+
+/* Preserve deadline visibility in the compact blue cards and overview. */
+.sz-request-date { flex-basis: 100%; font-size: 10px; line-height: 1.5; }
+.sz-request-edge { width: 68px; }
+.sz-request-countdown { text-align: right; }
+.sz-request-countdown small { display: block; color: var(--color-muted); font-size: 9px; }
+.sz-request-countdown strong { display: block; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.sz-request-countdown[data-tone=bad], .sz-nearest-heading [data-tone=bad] { color: var(--color-bad); }
+.sz-request-countdown[data-tone=warn], .sz-nearest-heading [data-tone=warn] { color: var(--color-warn); }
+.sz-request-countdown[data-tone=muted], .sz-nearest-heading [data-tone=muted] { color: var(--color-muted); }
+.sz-request-edge > .sz-request-reply-date { font-size: 10px; line-height: 1.5; }
+.sz-nearest-deadline { display: block; margin-top: 16px; padding: 14px 16px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 16px; }
+.sz-nearest-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.sz-nearest-heading h2 { font-size: 13px; font-weight: 550; }
+.sz-nearest-heading strong { font-size: 16px; white-space: nowrap; }
+.sz-nearest-subject { margin: 6px 0 3px; font-size: 12px; overflow-wrap: anywhere; }
+.sz-nearest-deadline .sz-small-muted + .sz-small-muted { margin-top: 5px; }
+
+.sz-reset-filter { min-height: 42px; padding: 9px 16px; border-radius: 12px; background: var(--color-primary); color: var(--color-primary-fg); font-size: 13px; font-weight: 600; }
+.sz-rating-success { margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--color-primary); }
+
+/* Conservative saved-response previews; no inferred table headings or rows. */
+.sz-response-notice { margin: 0 0 12px; color: var(--color-muted); font-size: 12px; line-height: 1.65; }
+.sz-response-table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid var(--color-border); border-radius: 12px; }
+.sz-response-table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.55; }
+.sz-response-table td { min-width: 110px; max-width: 320px; padding: 10px; border: 1px solid var(--color-border); vertical-align: top; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sz-response-fields { margin: 0; padding: 0 0 0 26px; font-size: 13px; line-height: 1.6; }
+.sz-response-fields li { padding: 6px 0 6px 4px; border-bottom: 1px solid var(--color-border); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sz-response-raw { margin-top: 14px; color: var(--color-muted); font-size: 12px; }
+.sz-response-raw summary { cursor: pointer; padding: 8px 0; }
+.sz-response-raw pre, .sz-response-tail pre { margin: 8px 0 0; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sz-response-tail { margin-top: 12px; font-size: 12px; line-height: 1.6; }

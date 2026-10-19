@@ -17,6 +17,7 @@ import (
         "encoding/json"
         "errors"
         "fmt"
+        "html"
         "io"
         "net/http"
         "net/http/cookiejar"
@@ -702,11 +703,7 @@ func (c *Client) GetRequestStatus(slug string) (*RequestStatus, error) {
                         st.ResponseFrom = strings.TrimSpace(plain[:min(80, len(plain))])
                 }
                 if m := reCorrText.FindStringSubmatch(tail); m != nil {
-                        text := cleanCorrespondenceHTML(m[1])
-                        if len(text) > 400 {
-                                text = text[:400] + "…"
-                        }
-                        st.ResponseExcerpt = text
+                        st.ResponseExcerpt = clipCorrespondenceText(cleanCorrespondenceHTML(m[1]), 400)
                 }
                 // вложения последнего ответа (имена — для уведомлений и розбора)
                 if atts := parseAttachments(tail); len(atts) > 0 {
@@ -740,31 +737,80 @@ func (c *Client) GetRequestResponseText(slug string, maxLen int) (string, error)
         last := incoming[len(incoming)-1]
         tail := page[last[0]:]
         if m := reCorrText.FindStringSubmatch(tail); m != nil {
-                text := cleanCorrespondenceHTML(m[1])
-                if maxLen > 0 && len(text) > maxLen {
-                        text = text[:maxLen] + "…"
-                }
-                return text, nil
+                return clipCorrespondenceText(cleanCorrespondenceHTML(m[1]), maxLen), nil
         }
         return "", nil
 }
 
-// cleanCorrespondenceHTML — HTML-фрагмент письма органа → чистый текст:
-// вырезаем блок вложений, добавляем маркер «[Вкладення: …]», снимаем теги,
-// разжимаем сущности, схлопываем пробелы.
-func cleanCorrespondenceHTML(html string) string {
-        atts := parseAttachments(html)
-        html = stripAttachmentsHTML(html)
-        text := htmlUnescape(reTag.ReplaceAllString(html, " "))
-        text = strings.Join(strings.Fields(text), " ")
-        if marker := attachmentMarker(atts); marker != "" {
-                if text == "" {
-                        text = marker
-                } else {
-                        text = text + " " + marker
-                }
-        }
-        return text
+// clipCorrespondenceText limits future excerpts by Unicode code points, never
+// through a UTF-8 byte sequence. A nonpositive limit means no clipping.
+func clipCorrespondenceText(text string, maxLen int) string {
+	if maxLen <= 0 {
+		return text
+	}
+	count := 0
+	for offset := range text {
+		if count == maxLen {
+			return text[:offset] + "…"
+		}
+		count++
+	}
+	return text
+}
+
+var reCorrespondenceTagName = regexp.MustCompile(`(?i)^<\s*(/?)\s*([a-z][a-z0-9]*)\b`)
+
+// cleanCorrespondenceHTML keeps explicit HTML line/block breaks, preformatted
+// lines and plain-text lines. HTML source wrapping outside <pre> is only layout
+// whitespace, so it must not manufacture CSV rows. Attachment UI is removed.
+func cleanCorrespondenceHTML(fragment string) string {
+	atts := parseAttachments(fragment)
+	fragment = stripAttachmentsHTML(fragment)
+	tags := reTag.FindAllStringIndex(fragment, -1)
+	var text strings.Builder
+	preDepth := 0
+	appendText := func(value string) {
+		value = html.UnescapeString(value)
+		value = strings.ReplaceAll(strings.ReplaceAll(value, "\r\n", "\n"), "\r", "\n")
+		if len(tags) > 0 && preDepth == 0 {
+			value = strings.ReplaceAll(value, "\n", " ")
+		}
+		text.WriteString(value)
+	}
+	last := 0
+	for _, tag := range tags {
+		appendText(fragment[last:tag[0]])
+		if name := reCorrespondenceTagName.FindStringSubmatch(fragment[tag[0]:tag[1]]); name != nil {
+			switch strings.ToLower(name[2]) {
+			case "br", "p", "div", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "hr":
+				text.WriteByte('\n')
+			case "pre":
+				text.WriteByte('\n')
+				if name[1] == "/" {
+					if preDepth > 0 {
+						preDepth--
+					}
+				} else {
+					preDepth++
+				}
+			case "td", "th":
+				text.WriteByte(' ')
+			}
+		}
+		last = tag[1]
+	}
+	appendText(fragment[last:])
+	lines := strings.Split(text.String(), "\n")
+	cleanLines := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if line = strings.Join(strings.Fields(line), " "); line != "" {
+			cleanLines = append(cleanLines, line)
+		}
+	}
+	if marker := attachmentMarker(atts); marker != "" {
+		cleanLines = append(cleanLines, marker)
+	}
+	return strings.Join(cleanLines, "\n")
 }
 
 // htmlUnescape заменяет базовые HTML-сущности.
