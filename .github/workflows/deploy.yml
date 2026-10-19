@@ -41,7 +41,7 @@ jobs:
       VM_HOST: 35.209.212.217
       VM_USER: u0_a566
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: info-bot-linux-amd64
           path: artifact
